@@ -1,25 +1,25 @@
-# Pi do Eval?
+# Pi do Eval? 😈😇
 
-A general-purpose eval framework for [Pi](https://github.com/anthropics/pi) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows. This library helps you measure whether an extension actually works -- using Pi itself as both the worker (running the extension under test) and the judge (evaluating output quality). No separate eval platform needed; evals run through your existing Pi setup.
+A general-purpose eval framework for [Pi](https://github.com/anthropics/pi) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows. This library helps you measure whether an extension actually works, using Pi itself as both the worker (running the extension under test) and the judge (evaluating output quality). No separate eval platform needed; evals run through your existing Pi setup.
 
 ## How it works
 
 1. Copies the project prompt and scaffold files (if any) into a fresh working directory
 2. Spawns `pi -p --mode json -e <extensionPath>` with the extension under test
-3. Captures JSONL events -- tool calls, file writes, plugin-specific state changes
+3. Captures JSONL events: tool calls, file writes, plugin-specific state changes
 4. After the session completes, the plugin optionally runs independent verification
 5. Spawns `pi -p --mode json --no-extensions` as the judge to evaluate output quality
 6. Plugin scores and judge scores are combined into a weighted final report
 
-The eval prompt is deliberately minimal -- the extension's system prompt must drive the behavior on its own.
+The eval prompt is deliberately minimal; the extension's system prompt must drive the behavior on its own.
 
 ## Key concepts
 
-**Plugin** -- Each extension provides an eval plugin that defines what "good" looks like. A TDD extension might score test-before-code ordering; a code review extension might score issue detection accuracy. The plugin handles domain-specific parsing, scoring, and judge prompting while the framework handles orchestration.
+**Plugin.** Each extension provides an eval plugin that defines what "good" looks like. A TDD extension might score test-before-code ordering; a code review extension might score issue detection accuracy. The plugin handles domain-specific parsing, scoring, and judge prompting while the framework handles orchestration.
 
-**Project** -- A small, self-contained coding task used as eval input. Each project contains a prompt document (called a PRD), an optional scaffold, and a config that maps it to a plugin.
+**Project.** A small, self-contained coding task used as eval input. Each project contains a prompt document (called a PRD), an optional scaffold, and a config that maps it to a plugin.
 
-**Scoring** -- Two sources of scores are combined into a weighted average: deterministic scores computed by the plugin (e.g. "did the tests pass?") and LLM judge scores from a second Pi session that evaluates output quality.
+**Scoring.** Two sources of scores are combined into a weighted average: deterministic scores computed by the plugin (e.g. "did the tests pass?") and LLM judge scores from a second Pi session that evaluates output quality.
 
 ## Quick start
 
@@ -242,7 +242,7 @@ While the run is active, the `runDir` contains:
 | `session.jsonl` | JSONL events streamed as they arrive |
 | `live.json` | Periodic parsed session snapshot for the viewer |
 
-The run index (`runs/index.json`) includes live runs so they appear in the viewer immediately. Once the run completes, write the final report as usual -- the viewer picks up `report.json` and stops polling.
+The run index (`runs/index.json`) includes live runs so they appear in the viewer immediately. Once the run completes, write the final report as usual; the viewer picks up `report.json` and stops polling.
 
 ## Configuring models
 
@@ -269,11 +269,11 @@ const judgeResult = await runJudge({
 
 When omitted, Pi uses its defaults from `~/.pi/agent/settings.json`.
 
-The parser automatically extracts model and provider info from the session's `message_start` events, so `EvalSession.modelInfo` and report metadata reflect which model actually ran -- regardless of how it was configured.
+The parser automatically extracts model and provider info from the session's `message_start` events, so `EvalSession.modelInfo` and report metadata reflect which model actually ran, regardless of how it was configured.
 
 ## Sandboxing
 
-Extensions run in eval can execute arbitrary code -- file writes, shell commands, network requests. Sandboxing constrains the Pi subprocess so it can only access paths you explicitly allow.
+Extensions run in eval can execute arbitrary code (file writes, shell commands, network requests). Sandboxing constrains the Pi subprocess so it can only access paths you explicitly allow.
 
 pi-do-eval uses [ai-jail](https://github.com/anthropics/ai-jail), a lightweight wrapper around OS-native sandboxing primitives (`sandbox-exec` on macOS, `bubblewrap` on Linux). Unlike Docker, there is no VM or container runtime involved: processes run natively with kernel-enforced restrictions, so startup cost is near-zero and throughput is unaffected.
 
@@ -289,7 +289,7 @@ brew install ai-jail
 cargo install ai-jail
 ```
 
-If ai-jail is not on `PATH`, pi-do-eval prints a single warning to stderr and runs unsandboxed. Your evals still work -- you just lose the isolation.
+If ai-jail is not on `PATH`, pi-do-eval prints a single warning to stderr and runs unsandboxed. Your evals still work; you just lose the isolation.
 
 ### Enabling the sandbox
 
