@@ -5,6 +5,9 @@ export interface JudgeOptions {
   workDir: string;
   prompt: string;
   timeoutMs?: number;
+  provider?: string;
+  model?: string;
+  thinking?: string;
 }
 
 function parseJudgeResponse(output: string): JudgeResult | undefined {
@@ -36,6 +39,9 @@ function parseJudgeResponse(output: string): JudgeResult | undefined {
 
 export async function runJudge(opts: JudgeOptions): Promise<JudgeResult | undefined> {
   const args = ["-p", "--mode", "json", "--no-extensions", "--no-session"];
+  if (opts.provider) args.push("--provider", opts.provider);
+  if (opts.model) args.push("--model", opts.model);
+  if (opts.thinking) args.push("--thinking", opts.thinking);
   args.push(opts.prompt);
 
   const timeout = opts.timeoutMs ?? 120_000;
