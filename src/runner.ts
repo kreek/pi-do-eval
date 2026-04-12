@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseSessionLines } from "./parser.js";
 import { updateRunIndex } from "./reporter.js";
-import type { EvalSession } from "./types.js";
+import { buildSandboxedCommand } from "./sandbox.js";
+import type { EvalSession, SandboxOptions } from "./types.js";
 
 export interface LiveOptions {
   runDir: string;
@@ -23,6 +24,7 @@ export interface RunOptions {
   provider?: string;
   model?: string;
   thinking?: string;
+  sandbox?: boolean | SandboxOptions;
 }
 
 export interface RunResult {
@@ -66,7 +68,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
   // Live mode setup
   const live = opts.live;
   let liveInterval: ReturnType<typeof setInterval> | undefined;
-  let sessionJsonlPath: string | undefined;
+  let sessionStream: fs.WriteStream | undefined;
 
   if (live) {
     fs.mkdirSync(live.runDir, { recursive: true });
@@ -75,7 +77,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
       path.join(live.runDir, "status.json"),
       JSON.stringify({ status: "running", startedAt, ...live.meta }),
     );
-    sessionJsonlPath = path.join(live.runDir, "session.jsonl");
+    sessionStream = fs.createWriteStream(path.join(live.runDir, "session.jsonl"), { flags: "a" });
     updateRunIndex(live.runsDir);
   }
 
@@ -93,7 +95,18 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
   }
 
   return new Promise<RunResult>((resolve) => {
-    const proc = spawn("pi", args, {
+    let command = "pi";
+    let spawnArgs = args;
+    if (opts.sandbox) {
+      const sandboxOpts = opts.sandbox === true ? undefined : opts.sandbox;
+      ({ command, args: spawnArgs } = buildSandboxedCommand("pi", args, {
+        workDir: opts.workDir,
+        workDirAccess: "rw",
+        options: sandboxOpts,
+      }));
+    }
+
+    const proc = spawn(command, spawnArgs, {
       cwd: opts.workDir,
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
@@ -110,6 +123,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
       clearTimeout(hardTimer);
       clearInterval(idleCheck);
       if (liveInterval) clearInterval(liveInterval);
+      sessionStream?.end();
       const session = parseSessionLines(lines);
       session.exitCode = code;
       if (live) {
@@ -129,9 +143,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
       for (const line of parts) {
         if (line.trim()) {
           lines.push(line);
-          if (sessionJsonlPath) {
-            fs.appendFileSync(sessionJsonlPath, line + "\n");
-          }
+          sessionStream?.write(line + "\n");
         }
       }
     });

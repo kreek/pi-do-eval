@@ -31,6 +31,7 @@ export interface EvalSession {
   exitCode: number | null;
   tokenUsage: { input: number; output: number };
   modelInfo?: { model: string; provider: string };
+  parseWarnings: number;
 }
 
 // -- Verification --------------------------------------------------------------
@@ -68,6 +69,12 @@ export interface JudgeResult {
   findings: string[];
 }
 
+export type JudgeFailureReason = "timeout" | "crash" | "parse_error" | "empty_response";
+
+export type JudgeOutcome =
+  | { ok: true; result: JudgeResult }
+  | { ok: false; reason: JudgeFailureReason };
+
 // -- Scoring -------------------------------------------------------------------
 
 export interface EvalScores {
@@ -90,4 +97,12 @@ export interface EvalReport {
   judgeResult?: JudgeResult;
   session: EvalSession;
   findings: string[];
+}
+
+// -- Sandbox ------------------------------------------------------------------
+
+export interface SandboxOptions {
+  extraRwPaths?: string[];
+  extraRoPaths?: string[];
+  lockdown?: boolean;
 }

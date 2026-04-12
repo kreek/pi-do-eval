@@ -9,6 +9,8 @@ interface SessionEntry {
     toolName?: string;
     isError?: boolean;
     timestamp?: number;
+    model?: string;
+    provider?: string;
   };
   usage?: { input?: number; output?: number };
 }
@@ -36,12 +38,13 @@ function extractText(content: ContentBlock[]): string {
 
 export function parseSessionLines(lines: string[], plugin?: EvalPlugin): EvalSession {
   const entries: SessionEntry[] = [];
+  let parseWarnings = 0;
   for (const line of lines) {
     if (!line.trim()) continue;
     try {
       entries.push(JSON.parse(line));
     } catch {
-      // skip malformed lines
+      parseWarnings++;
     }
   }
 
@@ -61,9 +64,8 @@ export function parseSessionLines(lines: string[], plugin?: EvalPlugin): EvalSes
 
     // Extract model info from first assistant message_start
     if (entry.type === "message_start" && entry.message?.role === "assistant" && !modelInfo) {
-      const msg = entry.message as Record<string, unknown>;
-      if (typeof msg.model === "string" && typeof msg.provider === "string") {
-        modelInfo = { model: msg.model, provider: msg.provider };
+      if (entry.message.model && entry.message.provider) {
+        modelInfo = { model: entry.message.model, provider: entry.message.provider };
       }
     }
 
@@ -104,9 +106,12 @@ export function parseSessionLines(lines: string[], plugin?: EvalPlugin): EvalSes
       const text = extractText(content);
       const toolName = entry.message.toolName ?? "";
 
-      const lastCall = [...toolCalls].reverse().find((c) => c.name === toolName && !c.resultText);
-      if (lastCall) {
-        lastCall.resultText = text;
+      for (let i = toolCalls.length - 1; i >= 0; i--) {
+        const call = toolCalls[i]!;
+        if (call.name === toolName && !call.resultText) {
+          call.resultText = text;
+          break;
+        }
       }
 
       // Let plugin extract domain-specific events
@@ -127,5 +132,6 @@ export function parseSessionLines(lines: string[], plugin?: EvalPlugin): EvalSes
     exitCode: null,
     tokenUsage: { input: inputTokens, output: outputTokens },
     modelInfo,
+    parseWarnings,
   };
 }

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import type { JudgeResult } from "./types.js";
+import { buildSandboxedCommand } from "./sandbox.js";
+import type { JudgeOutcome, JudgeResult, SandboxOptions } from "./types.js";
 
 export interface JudgeOptions {
   workDir: string;
@@ -8,14 +9,18 @@ export interface JudgeOptions {
   provider?: string;
   model?: string;
   thinking?: string;
+  sandbox?: boolean | SandboxOptions;
 }
 
 function parseJudgeResponse(output: string): JudgeResult | undefined {
-  const jsonMatch = output.match(/\{[\s\S]*\}/);
+  // Match the last JSON object in the output (non-greedy would match the first/smallest;
+  // we want the last one since the judge's final answer typically comes at the end)
+  const allMatches = output.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g);
+  const jsonMatch = allMatches?.at(-1);
   if (!jsonMatch) return undefined;
 
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch);
     const scores: Record<string, number> = {};
     const reasons: Record<string, string> = {};
 
@@ -37,7 +42,7 @@ function parseJudgeResponse(output: string): JudgeResult | undefined {
   }
 }
 
-export async function runJudge(opts: JudgeOptions): Promise<JudgeResult | undefined> {
+export async function runJudge(opts: JudgeOptions): Promise<JudgeOutcome> {
   const args = ["-p", "--mode", "json", "--no-extensions", "--no-session"];
   if (opts.provider) args.push("--provider", opts.provider);
   if (opts.model) args.push("--model", opts.model);
@@ -46,8 +51,19 @@ export async function runJudge(opts: JudgeOptions): Promise<JudgeResult | undefi
 
   const timeout = opts.timeoutMs ?? 120_000;
 
-  return new Promise<JudgeResult | undefined>((resolve) => {
-    const proc = spawn("pi", args, {
+  return new Promise<JudgeOutcome>((resolve) => {
+    let command = "pi";
+    let spawnArgs = args;
+    if (opts.sandbox) {
+      const sandboxOpts = opts.sandbox === true ? undefined : opts.sandbox;
+      ({ command, args: spawnArgs } = buildSandboxedCommand("pi", args, {
+        workDir: opts.workDir,
+        workDirAccess: "ro",
+        options: sandboxOpts,
+      }));
+    }
+
+    const proc = spawn(command, spawnArgs, {
       cwd: opts.workDir,
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
@@ -56,11 +72,11 @@ export async function runJudge(opts: JudgeOptions): Promise<JudgeResult | undefi
     let stdout = "";
     let settled = false;
 
-    function finish(result: JudgeResult | undefined) {
+    function finish(outcome: JudgeOutcome) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(result);
+      resolve(outcome);
     }
 
     proc.stdout.on("data", (chunk: Buffer) => {
@@ -69,14 +85,21 @@ export async function runJudge(opts: JudgeOptions): Promise<JudgeResult | undefi
 
     proc.on("close", () => {
       const assistantText = extractAssistantText(stdout);
-      finish(parseJudgeResponse(assistantText) ?? parseJudgeResponse(stdout));
+      const result = parseJudgeResponse(assistantText) ?? parseJudgeResponse(stdout);
+      if (result) {
+        finish({ ok: true, result });
+      } else if (!stdout.trim()) {
+        finish({ ok: false, reason: "empty_response" });
+      } else {
+        finish({ ok: false, reason: "parse_error" });
+      }
     });
 
-    proc.on("error", () => finish(undefined));
+    proc.on("error", () => finish({ ok: false, reason: "crash" }));
 
     const timer = setTimeout(() => {
       proc.kill("SIGTERM");
-      finish(undefined);
+      finish({ ok: false, reason: "timeout" });
     }, timeout);
   });
 }
@@ -92,7 +115,9 @@ function extractAssistantText(jsonlOutput: string): string {
           if (block.type === "text" && block.text) parts.push(block.text);
         }
       }
-    } catch {}
+    } catch {
+      // Non-JSON lines in JSONL output are expected (e.g. startup banners)
+    }
   }
   return parts.join("\n");
 }

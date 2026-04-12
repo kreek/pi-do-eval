@@ -4,7 +4,10 @@ import type { EvalPlugin, EvalReport } from "./types.js";
 
 export function writeReport(report: EvalReport, runDir: string) {
   fs.mkdirSync(runDir, { recursive: true });
-  fs.writeFileSync(path.join(runDir, "report.json"), JSON.stringify(report, null, 2));
+  // Omit rawLines — already saved as session.jsonl
+  const { rawLines: _, ...sessionWithoutRaw } = report.session;
+  const slimReport = { ...report, session: sessionWithoutRaw };
+  fs.writeFileSync(path.join(runDir, "report.json"), JSON.stringify(slimReport, null, 2));
   fs.writeFileSync(path.join(runDir, "report.md"), formatMarkdown(report));
 }
 
@@ -44,7 +47,9 @@ export function updateRunIndex(runsDir: string) {
           workerModel: report.meta.workerModel,
           judgeModel: report.meta.judgeModel,
         });
-      } catch {}
+      } catch (err) {
+        console.warn(`Skipping corrupt report.json in ${dir}:`, err);
+      }
       continue;
     }
 
@@ -63,7 +68,9 @@ export function updateRunIndex(runsDir: string) {
           startedAt: status.startedAt ?? "",
           workerModel: status.workerModel ?? "",
         });
-      } catch {}
+      } catch (err) {
+        console.warn(`Skipping corrupt status.json in ${dir}:`, err);
+      }
     }
   }
 
