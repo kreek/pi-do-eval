@@ -339,6 +339,10 @@ const result = await runEval({
 
 > **Warning**: `lockdown: true` blocks all outbound network requests. Both the worker and the judge need network access to call the LLM API, so only enable this if the extension and model are running locally.
 
+## See also
+
+[pi-tdd](https://github.com/manifestdocs/pi-tdd) is a TDD enforcement extension for Pi that uses pi-do-eval for its eval suite. It's a good example of a real plugin, project set, and scoring implementation built on this framework.
+
 ## Development
 
 ```bash
