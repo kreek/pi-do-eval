@@ -12,7 +12,6 @@ interface RunIndexEntry {
   dir: string;
   project: string;
   variant: string;
-  language: string;
   status: string;
   overall: number;
   durationMs: number;
@@ -35,7 +34,6 @@ export function updateRunIndex(runsDir: string) {
         dir,
         project: report.meta.project,
         variant: report.meta.variant,
-        language: report.meta.language,
         status: report.meta.status,
         overall: report.scores.overall,
         durationMs: report.meta.durationMs,
@@ -57,7 +55,7 @@ export function formatMarkdown(report: EvalReport, plugin?: EvalPlugin): string 
   lines.push("");
   lines.push("| Field | Value |");
   lines.push("|-------|-------|");
-  lines.push(`| Language | ${meta.language} |`);
+  lines.push(`| Variant | ${meta.variant} |`);
   lines.push(`| Worker Model | ${meta.workerModel} |`);
   if (meta.judgeModel) lines.push(`| Judge Model | ${meta.judgeModel} |`);
   lines.push(`| Status | ${meta.status} |`);
