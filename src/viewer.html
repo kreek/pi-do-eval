@@ -625,7 +625,7 @@
 
         async init() {
           try {
-            const resp = await fetch('runs/index.json');
+            const resp = await fetch('../runs/index.json');
             if (!resp.ok) {
               if (resp.status === 404) {
                 this.runs = [];
@@ -661,7 +661,7 @@
           this.reportError = null;
 
           try {
-            const resp = await fetch(`runs/${dir}/report.json`);
+            const resp = await fetch(`../runs/${dir}/report.json`);
             if (!resp.ok) throw new Error(`Failed to load report: ${resp.status}`);
             this.report = await resp.json();
           } catch (e) {
