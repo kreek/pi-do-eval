@@ -1,4 +1,4 @@
-# Pi (don't) do Eval
+# Pi do Eval?
 
 A general-purpose eval framework for [Pi](https://github.com/anthropics/pi) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows. This library helps you measure whether an extension actually works -- using Pi itself as both the worker (running the extension under test) and the judge (evaluating output quality). No separate eval platform needed; evals run through your existing Pi setup.
 
@@ -41,7 +41,7 @@ import {
   defaultVerify,
   type EvalPlugin,
   type RunOptions,
-} from "pi-dont-do-eval";
+} from "pi-do-eval";
 
 // 1. Define your plugin (or import one)
 const myPlugin: EvalPlugin = {
@@ -125,7 +125,7 @@ interface PluginScoreResult {
 Create `plugins/<name>.ts` exporting an `EvalPlugin`. Set `extensionPath` to the Pi extension's entry file, implement `scoreSession` with deterministic checks, and implement `buildJudgePrompt` with evaluation criteria.
 
 ```typescript
-import type { EvalPlugin } from "pi-dont-do-eval";
+import type { EvalPlugin } from "pi-do-eval";
 
 export const plugin: EvalPlugin = {
   name: "my-extension",

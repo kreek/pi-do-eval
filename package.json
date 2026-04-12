@@ -1,5 +1,5 @@
 {
-  "name": "pi-dont-do-eval",
+  "name": "pi-do-eval",
   "version": "0.1.0",
   "description": "General-purpose eval framework for Pi extensions",
   "type": "module",
