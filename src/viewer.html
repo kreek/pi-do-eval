@@ -533,17 +533,20 @@
     /* ---------- Inline toggle buttons (session detail expand/collapse) ---------- */
     .inline-toggle {
       margin-left: 0.35rem;
-      padding: 0 0.3rem;
-      font-size: 0.75rem;
+      padding: 0;
+      font-size: 0.82rem;
       background: none;
-      border: 1px solid var(--border-default);
+      border: none;
       color: var(--foreground-muted);
       cursor: pointer;
-      line-height: 1.5;
-      font-family: var(--pico-font-family);
+      line-height: 1;
+      transition: transform 0.15s ease;
+      display: inline-block;
+    }
+    .inline-toggle[aria-expanded="true"] {
+      transform: rotate(90deg);
     }
     .inline-toggle:hover {
-      background: var(--background-muted);
       color: var(--foreground);
     }
 
@@ -813,9 +816,8 @@
                       <div>
                         <span class="tool-name" x-text="ev.data.name"></span>
                         <span class="tool-args" x-text="truncate(formatArgs(ev.data.arguments), 120)"></span>
-                        <button class="inline-toggle" @click="open = !open"
-                                x-text="open ? 'hide' : 'expand'"
-                                :aria-expanded="open"></button>
+                        <button type="button" class="inline-toggle" @click="open = !open"
+                                :aria-expanded="open">&gt;</button>
                         <template x-if="open">
                           <div>
                             <div class="tool-result" x-show="ev.data.arguments"><strong>Arguments:</strong>
@@ -858,9 +860,8 @@
                               style="font-weight: 700; font-size: 0.82rem; letter-spacing: 0.03em;"></span>
                         <span style="color: var(--foreground-subtle); margin-left: 0.2rem; font-size: 0.82rem; font-family: var(--pico-font-family-monospace, monospace);"
                               x-text="ev.data.command"></span>
-                        <button class="inline-toggle" @click="open = !open"
-                                x-text="open ? 'hide' : 'output'"
-                                :aria-expanded="open"></button>
+                        <button type="button" class="inline-toggle" @click="open = !open"
+                                :aria-expanded="open">&gt;</button>
                         <div class="tool-result" x-show="open" x-text="ev.data.output"></div>
                       </div>
                     </template>
@@ -1117,7 +1118,8 @@
             .replace(/([a-z])([A-Z])/g, '$1 $2')
             .replace(/_/g, ' ')
             .replace(/\b\w/g, c => c.toUpperCase())
-            .replace(/\bTdd\b/, 'TDD');
+            .replace(/\bTdd\b/, 'TDD')
+            .replace(/\bPrd\b/, 'PRD');
         },
 
         formatDuration(ms) {
