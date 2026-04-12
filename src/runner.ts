@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { parseSessionLines } from "./parser.js";
 import { updateRunIndex } from "./reporter.js";
 import { buildSandboxedCommand } from "./sandbox.js";
-import type { EvalSession, SandboxOptions } from "./types.js";
+import type { EvalPlugin, EvalSession, SandboxOptions } from "./types.js";
 
 export interface LiveOptions {
   runDir: string;
@@ -21,6 +21,7 @@ export interface RunOptions {
   timeoutMs?: number;
   inactivityMs?: number;
   live?: LiveOptions;
+  plugin?: EvalPlugin;
   provider?: string;
   model?: string;
   thinking?: string;
@@ -83,7 +84,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
 
   function writeLiveSnapshot() {
     if (!live) return;
-    const session = parseSessionLines(lines);
+    const session = parseSessionLines(lines, opts.plugin);
     const snapshot = {
       meta: { ...live.meta, startedAt: new Date().toISOString(), status: "running", durationMs: 0 },
       session: { ...session, rawLines: undefined },
@@ -124,7 +125,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
       clearInterval(idleCheck);
       if (liveInterval) clearInterval(liveInterval);
       sessionStream?.end();
-      const session = parseSessionLines(lines);
+      const session = parseSessionLines(lines, opts.plugin);
       session.exitCode = code;
       if (live) {
         writeLiveSnapshot();
@@ -143,7 +144,7 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
       for (const line of parts) {
         if (line.trim()) {
           lines.push(line);
-          sessionStream?.write(line + "\n");
+          sessionStream?.write(`${line}\n`);
         }
       }
     });

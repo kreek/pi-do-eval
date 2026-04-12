@@ -107,7 +107,8 @@ export function parseSessionLines(lines: string[], plugin?: EvalPlugin): EvalSes
       const toolName = entry.message.toolName ?? "";
 
       for (let i = toolCalls.length - 1; i >= 0; i--) {
-        const call = toolCalls[i]!;
+        const call = toolCalls[i];
+        if (!call) continue;
         if (call.name === toolName && !call.resultText) {
           call.resultText = text;
           break;
