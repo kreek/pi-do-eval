@@ -213,11 +213,131 @@ Each run creates a timestamped directory under `runs/` containing:
 | `session.jsonl` | Raw Pi session for debugging |
 | `workdir/` | The project the agent built |
 
-An `index.json` at `runs/index.json` summarizes all runs for the report viewer (`npm run view`).
+An `index.json` at `runs/index.json` summarizes all runs for the report viewer. Start the viewer with `npm run view` (serves at `localhost:3333`). The viewer auto-refreshes the run index and polls live snapshots for in-progress runs.
+
+## Live mode
+
+Pass a `live` option to `runEval` to stream progress while a run is in flight. The runner writes periodic snapshots that the report viewer can poll, so you can watch tool calls and file writes accumulate in real time.
+
+```typescript
+const result = await runEval({
+  projectDir: "./projects/my-project",
+  workDir: "/tmp/eval-run",
+  prompt: "Implement all user stories in the attached PRD.",
+  extensionPath: myPlugin.extensionPath,
+  live: {
+    runDir: "./runs/2026-04-12T14-00-00Z",   // where live artifacts are written
+    runsDir: "./runs",                         // parent dir; index.json is updated here
+    intervalMs: 2000,                          // snapshot frequency (default: 2000)
+    meta: { project: "my-project", variant: "ts", workerModel: "claude-sonnet-4" },
+  },
+});
+```
+
+While the run is active, the `runDir` contains:
+
+| File | Description |
+|------|-------------|
+| `status.json` | Run metadata and current status (`"running"`) |
+| `session.jsonl` | JSONL events streamed as they arrive |
+| `live.json` | Periodic parsed session snapshot for the viewer |
+
+The run index (`runs/index.json`) includes live runs so they appear in the viewer immediately. Once the run completes, write the final report as usual -- the viewer picks up `report.json` and stops polling.
 
 ## Configuring models
 
-Both worker and judge use Pi's settings from `~/.pi/agent/settings.json`. To change models, update your Pi configuration before running evals.
+Both `runEval` and `runJudge` accept `provider`, `model`, and `thinking` options that map directly to Pi CLI flags:
+
+```typescript
+const result = await runEval({
+  projectDir: "./projects/my-project",
+  workDir: "/tmp/eval-run",
+  prompt: "Implement all user stories in the attached PRD.",
+  extensionPath: myPlugin.extensionPath,
+  provider: "anthropic",
+  model: "claude-sonnet-4-20250514",
+  thinking: "enabled",
+});
+
+const judgeResult = await runJudge({
+  workDir: "/tmp/eval-run",
+  prompt: myPlugin.buildJudgePrompt(prdContents, "/tmp/eval-run"),
+  provider: "anthropic",
+  model: "claude-sonnet-4-20250514",
+});
+```
+
+When omitted, Pi uses its defaults from `~/.pi/agent/settings.json`.
+
+The parser automatically extracts model and provider info from the session's `message_start` events, so `EvalSession.modelInfo` and report metadata reflect which model actually ran -- regardless of how it was configured.
+
+## Sandboxing
+
+Extensions run in eval can execute arbitrary code -- file writes, shell commands, network requests. Sandboxing constrains the Pi subprocess so it can only access paths you explicitly allow.
+
+pi-do-eval uses [ai-jail](https://github.com/anthropics/ai-jail), a lightweight wrapper around OS-native sandboxing primitives (`sandbox-exec` on macOS, `bubblewrap` on Linux). Unlike Docker, there is no VM or container runtime involved: processes run natively with kernel-enforced restrictions, so startup cost is near-zero and throughput is unaffected.
+
+### Installing ai-jail
+
+ai-jail is a separate tool. Install it before enabling the sandbox option:
+
+```bash
+# macOS
+brew install ai-jail
+
+# Linux / from source
+cargo install ai-jail
+```
+
+If ai-jail is not on `PATH`, pi-do-eval prints a single warning to stderr and runs unsandboxed. Your evals still work -- you just lose the isolation.
+
+### Enabling the sandbox
+
+Pass `sandbox: true` to `runEval` and/or `runJudge`:
+
+```typescript
+const result = await runEval({
+  projectDir: "./projects/my-project",
+  workDir: "/tmp/eval-run",
+  prompt: "Implement all user stories in the attached PRD.",
+  extensionPath: myPlugin.extensionPath,
+  sandbox: true,
+});
+
+const judgeResult = await runJudge({
+  workDir: "/tmp/eval-run",
+  prompt: myPlugin.buildJudgePrompt(prdContents, "/tmp/eval-run"),
+  sandbox: true,
+});
+```
+
+With `sandbox: true`, the worker gets read-write access to `workDir` (it needs to create files) and the judge gets read-only access (it only inspects output). Network is allowed by default since both processes need to reach the LLM API.
+
+### Sandbox options
+
+For finer control, pass a `SandboxOptions` object instead of `true`:
+
+```typescript
+const result = await runEval({
+  projectDir: "./projects/my-project",
+  workDir: "/tmp/eval-run",
+  prompt: "Implement all user stories in the attached PRD.",
+  extensionPath: myPlugin.extensionPath,
+  sandbox: {
+    extraRwPaths: ["/tmp/shared-cache"],     // additional read-write paths
+    extraRoPaths: ["/usr/local/lib/node"],    // additional read-only paths
+    lockdown: true,                           // block all network access
+  },
+});
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `extraRwPaths` | `string[]` | `[]` | Additional paths the process can read and write |
+| `extraRoPaths` | `string[]` | `[]` | Additional paths the process can read |
+| `lockdown` | `boolean` | `false` | Block network access (useful when the extension should work offline) |
+
+> **Warning**: `lockdown: true` blocks all outbound network requests. Both the worker and the judge need network access to call the LLM API, so only enable this if the extension and model are running locally.
 
 ## Development
 
