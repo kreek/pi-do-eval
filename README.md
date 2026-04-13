@@ -1,6 +1,6 @@
 # Pi, do Eval 😈😇
 
-A library for building eval harnesses for [Pi](https://github.com/anthropics/pi) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows.
+A library for building eval harnesses for [Pi](https://github.com/badlogic/pi-mono) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows.
 
 `pi-do-eval` gives you the building blocks:
 
@@ -53,7 +53,7 @@ eval/
 
 The generated `eval.ts` is a complete harness: it creates timestamped run directories, uses a fresh `workdir/` for each run, writes reports, updates the viewer index, and wires in live snapshots for the viewer.
 
-If you want a real example beyond the scaffold, see the `eval/` directory in [pi-tdd](https://github.com/kreek/pi-tdd). The rest of this README explains the lower-level APIs the scaffold uses.
+If you want a real example beyond the scaffold, see the `eval/` directory in [pi-tdd](https://github.com/kreek/pi-tdd/tree/main/eval). The rest of this README explains the lower-level APIs the scaffold uses.
 
 ## Plugin API
 
