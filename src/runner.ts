@@ -49,12 +49,6 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
     copyDirSync(scaffoldDir, opts.workDir);
   }
 
-  // Copy PRD
-  const prdSrc = path.join(opts.projectDir, "PRD.md");
-  if (fs.existsSync(prdSrc)) {
-    fs.copyFileSync(prdSrc, path.join(opts.workDir, "PRD.md"));
-  }
-
   // Build pi command
   const args = ["-p", "--mode", "json", "-e", opts.extensionPath, "--no-session"];
   if (opts.provider) args.push("--provider", opts.provider);

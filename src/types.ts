@@ -56,7 +56,7 @@ export interface EvalPlugin {
   parseEvent?(toolName: string, resultText: string, timestamp: number): PluginEvent[];
   classifyFile?(filePath: string): string;
   scoreSession(session: EvalSession, verify: VerifyResult): PluginScoreResult;
-  buildJudgePrompt(prd: string, workDir: string): string;
+  buildJudgePrompt(taskDescription: string, workDir: string): string;
   verify?(workDir: string): VerifyResult;
   formatSummary?(session: EvalSession): string[];
 }

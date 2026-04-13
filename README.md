@@ -1,15 +1,14 @@
 # Pi do Eval? 😈😇
 
-A general-purpose eval framework for [Pi](https://github.com/anthropics/pi) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows. This library helps you measure whether an extension actually works, using Pi itself as both the worker (running the extension under test) and the judge (evaluating output quality). No separate eval platform needed; evals run through your existing Pi setup.
+A library for building eval harnesses for [Pi](https://github.com/anthropics/pi) extensions. Pi is an AI coding agent; extensions customize its behavior for specific workflows. This library provides the building blocks (session parsing, scoring, judge orchestration, reporting) but does not run on its own. You write a script that imports from `pi-do-eval`, wires the pieces together, and defines what "good" looks like for your extension. No separate eval platform needed; evals run through your existing Pi setup using Pi itself as both the worker (running the extension under test) and the judge (evaluating output quality).
 
 ## How it works
 
-1. Copies the project prompt and scaffold files (if any) into a fresh working directory
-2. Spawns `pi -p --mode json -e <extensionPath>` with the extension under test
-3. Captures JSONL events: tool calls, file writes, plugin-specific state changes
-4. After the session completes, the plugin optionally runs independent verification
-5. Spawns `pi -p --mode json --no-extensions` as the judge to evaluate output quality
-6. Plugin scores and judge scores are combined into a weighted final report
+1. Spawns `pi -p --mode json -e <extensionPath>` with the extension under test
+2. Captures JSONL events: tool calls, file writes, plugin-specific state changes
+3. After the session completes, the plugin optionally runs independent verification
+4. Spawns `pi -p --mode json --no-extensions` as the judge to evaluate output quality
+5. Plugin scores and judge scores are combined into a weighted final report
 
 The eval prompt is deliberately minimal; the extension's system prompt must drive the behavior on its own.
 
@@ -17,19 +16,21 @@ The eval prompt is deliberately minimal; the extension's system prompt must driv
 
 **Plugin.** Each extension provides an eval plugin that defines what "good" looks like. A TDD extension might score test-before-code ordering; a code review extension might score issue detection accuracy. The plugin handles domain-specific parsing, scoring, and judge prompting while the framework handles orchestration.
 
-**Project.** A small, self-contained coding task used as eval input. Each project contains a prompt document (called a PRD), an optional scaffold, and a config that maps it to a plugin.
+**Project.** A self-contained task used as eval input. Each project contains a prompt, optional scaffold files, and a config that maps it to a plugin.
 
 **Scoring.** Two sources of scores are combined into a weighted average: deterministic scores computed by the plugin (e.g. "did the tests pass?") and LLM judge scores from a second Pi session that evaluates output quality.
 
 ## Quick start
 
-Install dependencies:
+There is no CLI. You build your own eval script that imports from `pi-do-eval` and calls its functions. A typical harness lives in your extension's repo (e.g. `eval/run.ts`) alongside your plugin and project definitions.
+
+Install `pi-do-eval` as a dependency of your project:
 
 ```bash
-npm install
+npm install pi-do-eval
 ```
 
-Run an eval programmatically:
+Then write a script that orchestrates the pipeline:
 
 ```typescript
 import {
@@ -51,8 +52,8 @@ const myPlugin: EvalPlugin = {
     // Your deterministic scoring logic
     return { scores: { correctness: 80 }, weights: { correctness: 0.5 }, findings: [] };
   },
-  buildJudgePrompt(prd, workDir) {
-    return `Evaluate the implementation in ${workDir} against this PRD:\n${prd}`;
+  buildJudgePrompt(taskDescription, workDir) {
+    return `Evaluate the implementation in ${workDir} against this task:\n${taskDescription}`;
   },
 };
 
@@ -60,7 +61,7 @@ const myPlugin: EvalPlugin = {
 const result = await runEval({
   projectDir: "./projects/my-project",
   workDir: "/tmp/eval-run",
-  prompt: "Implement all user stories in the attached PRD.",
+  prompt: "Implement all user stories described in the task.",
   extensionPath: myPlugin.extensionPath,
 });
 
@@ -68,7 +69,7 @@ const result = await runEval({
 const verify = myPlugin.verify?.("/tmp/eval-run") ?? defaultVerify();
 const judgeResult = await runJudge({
   workDir: "/tmp/eval-run",
-  prompt: myPlugin.buildJudgePrompt(prdContents, "/tmp/eval-run"),
+  prompt: myPlugin.buildJudgePrompt(taskDescription, "/tmp/eval-run"),
 });
 
 const scores = scoreSession({
@@ -98,7 +99,7 @@ interface EvalPlugin {
   scoreSession(session: EvalSession, verify: VerifyResult): PluginScoreResult;
 
   // Required: build the prompt sent to the LLM judge
-  buildJudgePrompt(prd: string, workDir: string): string;
+  buildJudgePrompt(taskDescription: string, workDir: string): string;
 
   // Optional: run independent verification (e.g. execute tests, lint)
   verify?(workDir: string): VerifyResult;
@@ -118,11 +119,11 @@ interface PluginScoreResult {
 }
 ```
 
-`buildJudgePrompt` produces the prompt for a second Pi session (with no extensions) that evaluates output quality. The judge returns JSON with scores, reasons, and findings.
+`buildJudgePrompt` receives the task description and working directory, and produces the prompt for a second Pi session (with no extensions) that evaluates output quality. The judge returns JSON with scores, reasons, and findings.
 
 ### Full plugin skeleton
 
-Create `plugins/<name>.ts` exporting an `EvalPlugin`. Set `extensionPath` to the Pi extension's entry file, implement `scoreSession` with deterministic checks, and implement `buildJudgePrompt` with evaluation criteria.
+Create a file in your own repo that exports an `EvalPlugin`. Set `extensionPath` to the Pi extension's entry file, implement `scoreSession` with deterministic checks, and implement `buildJudgePrompt` with evaluation criteria.
 
 ```typescript
 import type { EvalPlugin } from "pi-do-eval";
@@ -153,10 +154,10 @@ export const plugin: EvalPlugin = {
     return { scores, weights, findings };
   },
 
-  buildJudgePrompt(prd, workDir) {
+  buildJudgePrompt(taskDescription, workDir) {
     return [
       "Evaluate the implementation quality.",
-      `PRD:\n${prd}`,
+      `Task:\n${taskDescription}`,
       `Working directory: ${workDir}`,
       "Return JSON: { quality: <0-100>, quality_reason: '...', findings: [...] }",
     ].join("\n\n");
@@ -166,18 +167,19 @@ export const plugin: EvalPlugin = {
 
 ## Creating a project
 
-Projects live in `projects/<name>/` and contain:
+A project is a self-contained task for the extension to attempt. The framework does not enforce any directory layout; how you organize and discover projects is up to your eval harness. The only convention the framework relies on is a `scaffold/` directory: if you pass a `projectDir` to `runEval`, it copies any files from `projectDir/scaffold/` into the working directory before spawning Pi.
+
+A typical project directory looks like:
 
 | File | Description |
 |------|-------------|
-| `PRD.md` | The task prompt the extension must implement |
 | `scaffold/` | Optional starter files copied into the working directory |
 
-The framework copies both into the working directory before spawning Pi. How you organise and discover projects is up to your eval harness.
+Beyond that, your harness decides what else lives in a project directory (prompts, config, expected outputs).
 
 ### Example projects
 
-These ship with a TDD plugin as examples. Any extension can define its own projects with its own plugin.
+The [pi-tdd](https://github.com/manifestdocs/pi-tdd) extension includes a set of example projects. Any extension can define its own projects with its own plugin.
 
 | Project | Description | Variants |
 |---------|-------------|----------|
@@ -223,7 +225,7 @@ Pass a `live` option to `runEval` to stream progress while a run is in flight. T
 const result = await runEval({
   projectDir: "./projects/my-project",
   workDir: "/tmp/eval-run",
-  prompt: "Implement all user stories in the attached PRD.",
+  prompt: "Implement all user stories described in the task.",
   extensionPath: myPlugin.extensionPath,
   live: {
     runDir: "./runs/2026-04-12T14-00-00Z",   // where live artifacts are written
@@ -252,7 +254,7 @@ Both `runEval` and `runJudge` accept `provider`, `model`, and `thinking` options
 const result = await runEval({
   projectDir: "./projects/my-project",
   workDir: "/tmp/eval-run",
-  prompt: "Implement all user stories in the attached PRD.",
+  prompt: "Implement all user stories described in the task.",
   extensionPath: myPlugin.extensionPath,
   provider: "anthropic",
   model: "claude-sonnet-4-20250514",
@@ -261,7 +263,7 @@ const result = await runEval({
 
 const judgeResult = await runJudge({
   workDir: "/tmp/eval-run",
-  prompt: myPlugin.buildJudgePrompt(prdContents, "/tmp/eval-run"),
+  prompt: myPlugin.buildJudgePrompt(taskDescription, "/tmp/eval-run"),
   provider: "anthropic",
   model: "claude-sonnet-4-20250514",
 });
@@ -299,14 +301,14 @@ Pass `sandbox: true` to `runEval` and/or `runJudge`:
 const result = await runEval({
   projectDir: "./projects/my-project",
   workDir: "/tmp/eval-run",
-  prompt: "Implement all user stories in the attached PRD.",
+  prompt: "Implement all user stories described in the task.",
   extensionPath: myPlugin.extensionPath,
   sandbox: true,
 });
 
 const judgeResult = await runJudge({
   workDir: "/tmp/eval-run",
-  prompt: myPlugin.buildJudgePrompt(prdContents, "/tmp/eval-run"),
+  prompt: myPlugin.buildJudgePrompt(taskDescription, "/tmp/eval-run"),
   sandbox: true,
 });
 ```
@@ -321,7 +323,7 @@ For finer control, pass a `SandboxOptions` object instead of `true`:
 const result = await runEval({
   projectDir: "./projects/my-project",
   workDir: "/tmp/eval-run",
-  prompt: "Implement all user stories in the attached PRD.",
+  prompt: "Implement all user stories described in the task.",
   extensionPath: myPlugin.extensionPath,
   sandbox: {
     extraRwPaths: ["/tmp/shared-cache"],     // additional read-write paths
