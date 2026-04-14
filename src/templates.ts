@@ -10,7 +10,7 @@ export function packageJson(extensionName: string, piDoEvalRef: string): string 
       scripts: {
         eval: "tsx eval.ts",
         test: "vitest run",
-        view: 'ln -sf node_modules/pi-do-eval/src/viewer.html index.html && npx serve -S -l 3333 .',
+        view: "ln -sf node_modules/pi-do-eval/src/viewer.html index.html && npx serve -S -l 3333 .",
       },
       dependencies: {
         "pi-do-eval": piDoEvalRef,
@@ -87,6 +87,11 @@ export interface ModelConfig {
   thinking?: string;
 }
 
+export interface SuiteEntry {
+  trial: string;
+  variant: string;
+}
+
 export interface EvalConfig {
   worker?: ModelConfig;
   judge?: ModelConfig;
@@ -95,13 +100,19 @@ export interface EvalConfig {
     inactivityMs?: number;
     judgeMs?: number;
   };
-  runSets?: Record<string, Array<{ trial: string; variant: string }>>;
+  suites?: Record<string, SuiteEntry[]>;
+  runSets?: Record<string, SuiteEntry[]>;
+  regressions?: {
+    threshold?: number;
+  };
 }
 `;
 }
 
 export function evalConfig(): string {
   return `import type { EvalConfig } from "./types.js";
+
+const small = [{ trial: "example", variant: "default" }];
 
 const config: EvalConfig = {
   worker: {
@@ -115,8 +126,12 @@ const config: EvalConfig = {
     inactivityMs: 2 * 60 * 1000,
     judgeMs: 2 * 60 * 1000,
   },
-  runSets: {
-    quick: [{ trial: "example", variant: "default" }],
+  suites: {
+    small,
+    quick: small,
+  },
+  regressions: {
+    threshold: 3,
   },
 };
 
@@ -333,6 +348,10 @@ function hasFlag(name: string): boolean {
 }
 
 const evalConfig = await loadEvalConfig();
+const configuredSuites = {
+  ...(evalConfig.runSets ?? {}),
+  ...(evalConfig.suites ?? {}),
+};
 
 function buildRunOpts(): RunTrialOpts {
   return {
@@ -351,9 +370,9 @@ if (command === "list") {
     console.log(\`\${t} [\${config.plugin}] (\${config.taskCount} tasks) -- variants: \${variants}\`);
   }
 
-  if (evalConfig.runSets && Object.keys(evalConfig.runSets).length > 0) {
-    console.log("\\nRun sets:");
-    for (const [name, entries] of Object.entries(evalConfig.runSets)) {
+  if (Object.keys(configuredSuites).length > 0) {
+    console.log("\\nSuites:");
+    for (const [name, entries] of Object.entries(configuredSuites)) {
       const labels = entries.map((e) => \`\${e.trial}/\${e.variant}\`).join(", ");
       console.log(\`  \${name} (\${entries.length}): \${labels}\`);
     }
@@ -366,17 +385,17 @@ if (command === "list") {
   if (trial && variant) {
     await runTrial(trial, variant, buildRunOpts());
   } else if (setName) {
-    const entries = evalConfig.runSets?.[setName];
+    const entries = configuredSuites[setName];
     if (!entries) {
-      const available = Object.keys(evalConfig.runSets ?? {}).join(", ");
-      console.error(\`Unknown run set "\${setName}". Available: \${available}\`);
+      const available = Object.keys(configuredSuites).join(", ");
+      console.error(\`Unknown suite "\${setName}". Available: \${available}\`);
       process.exit(1);
     }
     for (const entry of entries) {
       await runTrial(entry.trial, entry.variant, buildRunOpts());
     }
   } else {
-    console.error("Usage: eval run <set-name>  OR  eval run --trial <t> --variant <v>");
+    console.error("Usage: eval run <suite-name>  OR  eval run --trial <t> --variant <v>");
     process.exit(1);
   }
 } else if (command === "run-all") {
@@ -391,8 +410,8 @@ if (command === "list") {
   console.log("Eval suite");
   console.log("");
   console.log("Usage:");
-  console.log("  eval list                                List trials, variants, and run sets");
-  console.log("  eval run <set>                           Run a named set from eval.config.ts");
+  console.log("  eval list                                List trials, variants, and suites");
+  console.log("  eval run <suite>                         Run a named suite from eval.config.ts");
   console.log("  eval run --trial <t> --variant <v>       Run a single trial/variant");
   console.log("  eval run-all                             Run all trials and variants");
   console.log("");
