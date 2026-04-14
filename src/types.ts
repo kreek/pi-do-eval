@@ -172,6 +172,57 @@ export interface SuiteComparison {
   hasRegression: boolean;
 }
 
+// -- Run Index ----------------------------------------------------------------
+
+export interface RunIndexEntry {
+  dir: string;
+  trial: string;
+  variant: string;
+  status: string;
+  overall: number;
+  durationMs: number;
+  startedAt: string;
+  workerModel: string;
+  judgeModel?: string;
+  suite?: string;
+  suiteRunId?: string;
+}
+
+// -- SSE Events ---------------------------------------------------------------
+
+interface EvalEventBase {
+  timestamp: number;
+}
+
+export type EvalEvent =
+  | (EvalEventBase & {
+      type: "run_started";
+      dir: string;
+      trial: string;
+      variant: string;
+      suite?: string;
+      suiteRunId?: string;
+      workerModel?: string;
+    })
+  | (EvalEventBase & {
+      type: "run_progress";
+      dir: string;
+      durationMs: number;
+      toolCount: number;
+      fileCount: number;
+    })
+  | (EvalEventBase & {
+      type: "run_completed";
+      dir: string;
+      status: EvalRunStatus;
+      overall: number;
+      durationMs: number;
+    })
+  | (EvalEventBase & {
+      type: "index_updated";
+      runs: RunIndexEntry[];
+    });
+
 // -- Sandbox ------------------------------------------------------------------
 
 export interface SandboxOptions {
