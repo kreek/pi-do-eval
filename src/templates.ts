@@ -10,7 +10,7 @@ export function packageJson(extensionName: string, piDoEvalRef: string): string 
       scripts: {
         eval: "tsx eval.ts",
         test: "vitest run",
-        view: "ln -sf node_modules/pi-do-eval/src/viewer.html index.html && npx serve -S -l 3333 .",
+        view: "npx pi-do-eval view",
       },
       dependencies: {
         "pi-do-eval": piDoEvalRef,

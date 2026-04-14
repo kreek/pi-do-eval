@@ -4,6 +4,7 @@ export { formatMarkdown, printSummary, updateRunIndex, writeReport } from "./rep
 export { type LiveOptions, type RunOptions, type RunResult, runEval } from "./runner.js";
 export { buildSandboxedCommand, checkAiJail } from "./sandbox.js";
 export { scoreSession } from "./scorer.js";
+export { EvalServer } from "./server.js";
 export {
   buildSuiteReportEntry,
   compareSuiteReports,
@@ -16,6 +17,7 @@ export {
   writeSuiteReport,
 } from "./suites.js";
 export type {
+  EvalEvent,
   EvalMeta,
   EvalPlugin,
   EvalReport,
@@ -28,6 +30,7 @@ export type {
   JudgeResult,
   PluginEvent,
   PluginScoreResult,
+  RunIndexEntry,
   SandboxOptions,
   SuiteComparison,
   SuiteComparisonEntry,
