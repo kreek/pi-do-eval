@@ -28,6 +28,7 @@
                 --foreground: #e6edf3;
                 --foreground-muted: #8b949e;
                 --foreground-subtle: #7d8590;
+                --suite-accent: var(--border-default);
                 --border-default: #30363d;
                 --border-muted: #21262d;
                 --accent-blue: #58a6ff;
@@ -56,6 +57,10 @@
                 --pico-muted-border-color: var(--border-default);
                 --pico-primary: var(--accent-green);
                 --pico-primary-inverse: var(--background);
+                --pico-primary-background: var(--background-subtle);
+                --pico-primary-focus: transparent;
+                --pico-secondary-background: var(--background-subtle);
+                --pico-secondary-focus: transparent;
                 --pico-code-background-color: var(--background-muted);
                 --pico-border-radius: 0;
                 --pico-card-border-radius: 0;
@@ -111,7 +116,6 @@
                 font-size: 0.82rem;
             }
             .run-list {
-                list-style: none;
                 margin: 0;
                 padding: 0;
                 overflow-y: auto;
@@ -122,28 +126,88 @@
                 justify-content: flex-start;
                 align-items: stretch;
             }
-            .run-item {
-                padding: 0.6rem 1.75rem;
+            .status-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                font-size: 0.64rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                line-height: 1.4;
+                color: var(--foreground-subtle);
+                border: none;
+            }
+            .status-pill.timeout,
+            .status-pill.stalled,
+            .status-pill.crashed {
+                color: var(--accent-red);
+            }
+            /* ---------- Run items ---------- */
+            .run-list .run-item {
+                padding: 0.55rem 1.2rem;
                 cursor: pointer;
-                border-left: 2px solid transparent;
-                transition:
-                    background-color 120ms ease,
-                    border-color 120ms ease;
+                background: var(--background);
+                color: var(--foreground);
+                border-bottom: 1px solid var(--border-muted);
+                transition: background-color 120ms ease;
             }
-            .run-item:hover {
-                background-color: var(--background-subtle);
+            .run-list .run-item:hover,
+            .run-list .run-item.active {
+                background: var(--background-subtle);
             }
-            .run-item.active {
-                background-color: var(--background-subtle);
-                border-left-color: var(--accent-green);
+
+            /* Suite header */
+            .run-list .suite-run-header {
+                background: #252b33;
+                border-bottom: none;
+                border-top: 5px solid var(--suite-accent);
+                border-left: 5px solid var(--suite-accent);
+                text-transform: uppercase;
             }
+            .run-list .suite-run-header:hover,
+            .run-list .suite-run-header.active {
+                background: #252b33;
+            }
+            /* Selected suite: white left+top edge on header and all children */
+            .run-list .suite-selected .suite-run-header {
+                border-left-color: #fff;
+                border-top-color: #fff;
+            }
+            .run-list .suite-selected .run-item-child {
+                border-left-color: #fff;
+            }
+            /* Single child selected within a suite */
+            .run-list .run-item-child.active {
+                border-left-color: #fff;
+            }
+
+            /* Child items: left border to link with suite header */
+            .run-list .run-item-child {
+                padding: 0.45rem 1.2rem 0.45rem 2.6rem;
+                border-left: 5px solid var(--suite-accent);
+                position: relative;
+            }
+            .run-list .run-item-child::before {
+                content: "—";
+                position: absolute;
+                left: calc(0.55rem + 8px);
+                top: 0.45rem;
+                color: var(--foreground-subtle);
+                font-size: 0.8rem;
+            }
+            .suite-run-children {
+            }
+            .run-list .run-item-child:hover,
+            .run-list .run-item-child.active {
+                background: var(--background-subtle);
+            }
+
             .run-item-top {
                 display: flex;
                 align-items: center;
                 gap: 0.4rem;
-            }
-            .run-item + .run-item {
-                border-top: 1px solid var(--border-muted);
             }
             .run-item-name {
                 font-weight: 600;
@@ -152,6 +216,7 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 flex: 1;
+                color: #fff;
             }
             .run-item-meta {
                 display: flex;
@@ -298,7 +363,7 @@
             .score-layout {
                 display: flex;
                 align-items: stretch;
-                gap: 0;
+                gap: 1.25rem;
             }
             .score-bars {
                 flex: 1;
@@ -309,10 +374,11 @@
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                padding: 0.75rem 0.75rem 0.75rem 0.5rem;
+                padding: 0.5rem 0.75rem;
                 background: var(--background);
                 flex-shrink: 0;
                 min-width: 5.5rem;
+                align-self: stretch;
             }
             .score-overall-value {
                 font-size: 2.2rem;
@@ -618,7 +684,6 @@
             }
 
             /* ---------- Focus visible ---------- */
-            .run-item:focus-visible,
             button:focus-visible,
             details summary:focus-visible,
             .skip-link:focus-visible {
@@ -703,56 +768,133 @@
                 </div>
 
                 <!-- Run list -->
-                <ul
+                <div
                     class="run-list"
                     x-show="!loading && runs.length > 0"
-                    role="listbox"
                     aria-label="Evaluation runs"
                 >
-                    <template x-for="run in runs" :key="run.dir">
-                        <li
-                            class="run-item"
-                            :class="{ active: selectedDir === run.dir }"
-                            role="option"
-                            :aria-selected="selectedDir === run.dir"
-                            tabindex="0"
-                            @click="selectRun(run.dir)"
-                            @keydown.enter="selectRun(run.dir)"
-                            @keydown.space.prevent="selectRun(run.dir)"
-                        >
-                            <div class="run-item-top">
-                                <span
-                                    class="run-item-name"
-                                    x-text="run.trial + '/' + run.variant"
-                                ></span>
-                                <span
-                                    x-show="run.status === 'running'"
-                                    class="badge-live"
-                                    >Live</span
+                    <template x-for="item in runList" :key="item.type === 'suite' ? item.suiteRunId : item.run.dir">
+                        <div>
+                            <template x-if="item.type === 'suite'">
+                                <div :class="{ 'suite-selected': selectedSuite?.suiteRunId === item.suiteRunId }">
+                                    <div
+                                        class="run-item suite-run-header"
+                                        :class="{ active: selectedSuite?.suiteRunId === item.suiteRunId }"
+                                        tabindex="0"
+                                        @click="selectSuite(item)"
+                                        @keydown.enter="selectSuite(item)"
+                                        @keydown.space.prevent="selectSuite(item)"
+                                    >
+                                        <div class="run-item-top">
+                                            <span
+                                                class="run-item-name"
+                                                x-text="'SUITE: ' + item.suite"
+                                            ></span>
+                                            <span
+                                                x-show="item.status === 'running'"
+                                                class="badge-live"
+                                                >Live</span
+                                            >
+                                            <span
+                                                x-show="item.status !== 'running' && item.status !== 'completed'"
+                                                class="status-pill"
+                                                :class="item.status"
+                                                x-text="item.status"
+                                            ></span>
+                                            <span
+                                                x-show="item.averageOverall != null"
+                                                class="badge"
+                                                :style="'background-color:' + scoreColor(item.averageOverall)"
+                                                x-text="item.averageOverall"
+                                            ></span>
+                                        </div>
+                                        <div class="run-item-meta">
+                                            <span x-text="formatSuiteRunLabel(item.suiteRunId)"></span>
+                                            <span x-text="suiteRunMeta(item)"></span>
+                                            <span x-show="item.durationMs > 0" x-text="formatDuration(item.durationMs)"></span>
+                                        </div>
+                                    </div>
+                                    <div class="suite-run-children">
+                                        <template x-for="run in item.children" :key="run.dir">
+                                            <div
+                                                class="run-item run-item-child"
+                                                :class="{ active: selectedDir === run.dir }"
+                                                role="listitem"
+                                                :aria-current="selectedDir === run.dir ? 'page' : false"
+                                                tabindex="0"
+                                                @click="selectRun(run.dir)"
+                                                @keydown.enter="selectRun(run.dir)"
+                                                @keydown.space.prevent="selectRun(run.dir)"
+                                            >
+                                                <div class="run-item-top">
+                                                    <span
+                                                        class="run-item-name"
+                                                        x-text="run.trial + '/' + run.variant"
+                                                    ></span>
+                                                    <span
+                                                        x-show="run.status === 'running'"
+                                                        class="badge-live"
+                                                        >Live</span
+                                                    >
+                                                    <span
+                                                        x-show="run.status !== 'running'"
+                                                        class="badge"
+                                                        :style="'background-color:' + scoreColor(run.overall)"
+                                                        x-text="run.overall"
+                                                    ></span>
+                                                </div>
+                                                <div class="run-item-meta">
+                                                    <span x-text="formatDuration(run.durationMs)"></span>
+                                                    <span x-text="formatDate(run.startedAt)"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="item.type === 'standalone'">
+                                <div
+                                    class="run-item"
+                                    :class="{ active: selectedDir === item.run.dir }"
+                                    role="button"
+                                    :aria-current="selectedDir === item.run.dir ? 'page' : false"
+                                    tabindex="0"
+                                    @click="selectRun(item.run.dir)"
+                                    @keydown.enter="selectRun(item.run.dir)"
+                                    @keydown.space.prevent="selectRun(item.run.dir)"
                                 >
-                                <span
-                                    x-show="run.status !== 'running'"
-                                    class="badge"
-                                    :style="'background-color:' + scoreColor(run.overall)"
-                                    x-text="run.overall"
-                                ></span>
-                            </div>
-                            <div class="run-item-meta">
-                                <span x-text="run.variant"></span>
-                                <span
-                                    x-text="formatDuration(run.durationMs)"
-                                ></span>
-                                <span x-text="formatDate(run.startedAt)"></span>
-                            </div>
-                        </li>
+                                    <div class="run-item-top">
+                                        <span
+                                            class="run-item-name"
+                                            x-text="item.run.trial + '/' + item.run.variant"
+                                        ></span>
+                                        <span
+                                            x-show="item.run.status === 'running'"
+                                            class="badge-live"
+                                            >Live</span
+                                        >
+                                        <span
+                                            x-show="item.run.status !== 'running'"
+                                            class="badge"
+                                            :style="'background-color:' + scoreColor(item.run.overall)"
+                                            x-text="item.run.overall"
+                                        ></span>
+                                    </div>
+                                    <div class="run-item-meta">
+                                        <span x-text="formatDuration(item.run.durationMs)"></span>
+                                        <span x-text="formatDate(item.run.startedAt)"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
                     </template>
-                </ul>
+                </div>
             </nav>
 
             <!-- Main area -->
             <main class="main" id="main-content">
                 <!-- No selection state -->
-                <div class="empty-state" x-show="!selectedDir && !loading">
+                <div class="empty-state" x-show="!selectedDir && !selectedSuite && !loading">
                     <p>Select a run from the sidebar to view its report.</p>
                 </div>
 
@@ -772,6 +914,102 @@
                     aria-live="assertive"
                 >
                     <p x-text="reportError"></p>
+                </div>
+
+                <!-- Suite summary view -->
+                <div x-show="selectedSuite && !reportLoading">
+                    <h2 x-text="'SUITE: ' + selectedSuite?.suite" style="text-transform: uppercase"></h2>
+                    <div class="meta-grid">
+                        <dl class="meta-card">
+                            <dt>Runs</dt>
+                            <dd x-text="selectedSuite?.totalRuns"></dd>
+                        </dl>
+                        <dl class="meta-card">
+                            <dt>Total Duration</dt>
+                            <dd x-text="formatDuration(selectedSuite?.durationMs)"></dd>
+                        </dl>
+                        <dl class="meta-card">
+                            <dt>Status</dt>
+                            <dd x-text="selectedSuite?.status"></dd>
+                        </dl>
+                    </div>
+
+                    <div class="content-card">
+                        <h3>Score Comparison</h3>
+                        <div style="overflow-x: auto">
+                            <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse">
+                                <tr style="border-bottom: 1px solid var(--border-default)">
+                                    <td
+                                        :rowspan="(selectedSuite?.children?.length || 0) + 1"
+                                        style="background: var(--background); text-align: center; vertical-align: middle; padding: 0.75rem; border-right: 1.25rem solid var(--background-subtle); width: 5.5rem; min-width: 5.5rem"
+                                    >
+                                        <span
+                                            class="score-overall-value"
+                                            style="display: block"
+                                            :style="'color:' + scoreColor(selectedSuite?.averageOverall)"
+                                            x-text="selectedSuite?.averageOverall ?? '—'"
+                                        ></span>
+                                        <span class="score-overall-label" style="display: block">Average</span>
+                                    </td>
+                                    <th style="text-align: left; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Trial / Variant</th>
+                                    <th style="text-align: center; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Overall</th>
+                                    <th style="text-align: center; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Status</th>
+                                    <th style="text-align: right; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Duration</th>
+                                </tr>
+                                <template x-for="run in selectedSuite?.children || []" :key="run.dir">
+                                    <tr
+                                        style="border-bottom: 1px solid var(--border-muted); cursor: pointer"
+                                        @click="selectRun(run.dir)"
+                                    >
+                                        <td style="padding: 0.5rem 0.6rem; font-weight: 500" x-text="run.trial + '/' + run.variant"></td>
+                                        <td style="text-align: center; padding: 0.5rem 0.6rem">
+                                            <span
+                                                class="badge"
+                                                :style="'background-color:' + scoreColor(run.overall)"
+                                                x-text="run.overall"
+                                            ></span>
+                                        </td>
+                                        <td style="text-align: center; padding: 0.5rem 0.6rem" x-text="run.status"></td>
+                                        <td style="text-align: right; padding: 0.5rem 0.6rem; color: var(--foreground-subtle)" x-text="formatDuration(run.durationMs)"></td>
+                                    </tr>
+                                </template>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Detailed score breakdown if reports loaded -->
+                    <template x-if="Object.keys(suiteReports).length > 0">
+                        <div class="content-card">
+                            <h3>Score Breakdown</h3>
+                            <div style="overflow-x: auto">
+                                <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid var(--border-default)">
+                                            <th style="text-align: left; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Category</th>
+                                            <template x-for="run in selectedSuite?.children || []" :key="run.dir">
+                                                <th style="text-align: center; padding: 0.4rem 0.6rem; color: var(--foreground-subtle); font-size: 0.78rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis" x-text="run.trial"></th>
+                                            </template>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="cat in suiteScoreCategories" :key="cat">
+                                            <tr style="border-bottom: 1px solid var(--border-muted)">
+                                                <td style="padding: 0.4rem 0.6rem; font-weight: 500" x-text="formatScoreKey(cat)"></td>
+                                                <template x-for="run in selectedSuite?.children || []" :key="run.dir">
+                                                    <td style="text-align: center; padding: 0.4rem 0.6rem">
+                                                        <span
+                                                            :style="'color:' + scoreColor(suiteReports[run.dir]?.scores?.deterministic?.[cat] ?? suiteReports[run.dir]?.scores?.judge?.[cat])"
+                                                            x-text="suiteReports[run.dir]?.scores?.deterministic?.[cat] ?? suiteReports[run.dir]?.scores?.judge?.[cat] ?? '—'"
+                                                        ></span>
+                                                    </td>
+                                                </template>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </template>
                 </div>
 
                 <!-- Report content -->
@@ -1199,6 +1437,8 @@
                 return {
                     runs: [],
                     selectedDir: null,
+                    selectedSuite: null,
+                    suiteReports: {},
                     report: null,
                     loading: true,
                     error: null,
@@ -1221,19 +1461,15 @@
                                 }
                             } else {
                                 this.runs = await resp.json();
-                                // Sort newest first by startedAt
-                                this.runs.sort((a, b) => {
-                                    const da = a.startedAt
-                                        ? new Date(a.startedAt)
-                                        : 0;
-                                    const db = b.startedAt
-                                        ? new Date(b.startedAt)
-                                        : 0;
-                                    return db - da;
-                                });
-                                // Auto-select first run
+                                this.sortRuns();
+                                // Auto-select first item
                                 if (this.runs.length > 0) {
-                                    this.selectRun(this.runs[0].dir);
+                                    const first = this.runList[0];
+                                    if (first?.type === 'suite') {
+                                        this.selectSuite(first);
+                                    } else if (first?.run) {
+                                        this.selectRun(first.run.dir);
+                                    }
                                 }
                             }
                             this._startIndexPolling();
@@ -1257,30 +1493,90 @@
                                 const resp = await fetch("runs/index.json");
                                 if (resp.ok) {
                                     this.runs = await resp.json();
-                                    this.runs.sort((a, b) => {
-                                        const da = a.startedAt
-                                            ? new Date(a.startedAt)
-                                            : 0;
-                                        const db = b.startedAt
-                                            ? new Date(b.startedAt)
-                                            : 0;
-                                        return db - da;
-                                    });
-                                    if (
-                                        !this.runs.some(
-                                            (r) => r.status === "running",
-                                        )
-                                    ) {
-                                        clearInterval(this._indexInterval);
-                                        this._indexInterval = null;
-                                    }
+                                    this.sortRuns();
+                                }
+                                // Check each "running" run for completion or staleness
+                                for (const run of this.runs) {
+                                    if (run.status !== "running") continue;
+                                    try {
+                                        const r = await fetch(
+                                            `runs/${run.dir}/report.json`,
+                                        );
+                                        if (r.ok) {
+                                            const report = await r.json();
+                                            run.status =
+                                                report.meta?.status || "completed";
+                                            run.overall =
+                                                report.scores?.overall || 0;
+                                            continue;
+                                        }
+                                    } catch {}
+                                    // No report — check if live.json is stale
+                                    try {
+                                        const lr = await fetch(
+                                            `runs/${run.dir}/live.json`,
+                                        );
+                                        if (lr.ok) {
+                                            const live = await lr.json();
+                                            const elapsed =
+                                                Date.now() -
+                                                new Date(live.meta?.startedAt || run.startedAt).getTime() -
+                                                (live.meta?.durationMs || 0);
+                                            // If no update in 2+ minutes, mark crashed
+                                            if (elapsed > 120000) {
+                                                run.status = "crashed";
+                                            }
+                                        } else {
+                                            // No live.json and no report — crashed
+                                            const started = new Date(run.startedAt).getTime();
+                                            if (Date.now() - started > 120000) {
+                                                run.status = "crashed";
+                                            }
+                                        }
+                                    } catch {}
+                                }
+                                if (
+                                    !this.runs.some(
+                                        (r) => r.status === "running",
+                                    )
+                                ) {
+                                    clearInterval(this._indexInterval);
+                                    this._indexInterval = null;
                                 }
                             } catch {}
                         }, 5000);
                     },
 
+                    async selectSuite(suiteItem) {
+                        this.selectedDir = null;
+                        this.selectedSuite = suiteItem;
+                        this.report = null;
+                        this.reportLoading = true;
+                        this.reportError = null;
+                        this.suiteReports = {};
+                        if (this._liveInterval) {
+                            clearInterval(this._liveInterval);
+                            this._liveInterval = null;
+                        }
+                        try {
+                            const fetches = suiteItem.children.map(async (run) => {
+                                if (run.status === "running") return;
+                                try {
+                                    const resp = await fetch(`runs/${run.dir}/report.json`);
+                                    if (resp.ok) {
+                                        this.suiteReports[run.dir] = await resp.json();
+                                    }
+                                } catch {}
+                            });
+                            await Promise.all(fetches);
+                        } finally {
+                            this.reportLoading = false;
+                        }
+                    },
+
                     async selectRun(dir) {
                         if (this.selectedDir === dir && this.report) return;
+                        this.selectedSuite = null;
                         this.selectedDir = dir;
                         this.report = null;
                         this.reportLoading = true;
@@ -1366,6 +1662,19 @@
                     },
 
                     // Computed-style getter for score rows
+                    get suiteScoreCategories() {
+                        const cats = new Set();
+                        for (const report of Object.values(this.suiteReports)) {
+                            if (report?.scores?.deterministic) {
+                                for (const k of Object.keys(report.scores.deterministic)) cats.add(k);
+                            }
+                            if (report?.scores?.judge) {
+                                for (const k of Object.keys(report.scores.judge)) cats.add(k);
+                            }
+                        }
+                        return Array.from(cats);
+                    },
+
                     get scoreRows() {
                         if (!this.report?.scores) return [];
                         const scores = this.report.scores;
@@ -1408,6 +1717,80 @@
                         }
 
                         return rows;
+                    },
+
+                    get runList() {
+                        const groups = new Map();
+                        const items = [];
+
+                        for (const run of this.runs) {
+                            if (run.suite && run.suiteRunId) {
+                                if (!groups.has(run.suiteRunId)) {
+                                    const group = {
+                                        type: "suite",
+                                        suiteRunId: run.suiteRunId,
+                                        suite: run.suite,
+                                        sortKey: 0,
+                                        children: [],
+                                    };
+                                    groups.set(run.suiteRunId, group);
+                                    items.push(group);
+                                }
+                                const group = groups.get(run.suiteRunId);
+                                group.children.push(run);
+                                group.sortKey = Math.max(
+                                    group.sortKey,
+                                    this.runSortKey(run),
+                                );
+                            } else {
+                                items.push({
+                                    type: "standalone",
+                                    sortKey: this.runSortKey(run),
+                                    run,
+                                });
+                            }
+                        }
+
+                        for (const item of items) {
+                            if (item.type !== "suite") continue;
+                            item.children.sort(
+                                (a, b) =>
+                                    this.runSortKey(b) -
+                                    this.runSortKey(a),
+                            );
+                            const scores = item.children
+                                .map((r) => r.overall)
+                                .filter(
+                                    (s) =>
+                                        Number.isFinite(s) && s > 0,
+                                );
+                            item.averageOverall =
+                                scores.length > 0
+                                    ? Math.round(
+                                          scores.reduce(
+                                              (sum, s) => sum + s,
+                                              0,
+                                          ) / scores.length,
+                                      )
+                                    : null;
+                            item.durationMs = item.children.reduce(
+                                (sum, r) =>
+                                    sum + (r.durationMs || 0),
+                                0,
+                            );
+                            item.finishedRuns =
+                                item.children.filter(
+                                    (r) => r.status !== "running",
+                                ).length;
+                            item.totalRuns = item.children.length;
+                            item.status = this.suiteRunStatus(
+                                item.children,
+                            );
+                        }
+
+                        return items.sort(
+                            (a, b) => b.sortKey - a.sortKey,
+                        );
                     },
 
                     // Unified timeline
@@ -1550,6 +1933,9 @@
                     formatDate(iso) {
                         if (!iso) return "--";
                         const d = new Date(iso);
+                        if (!Number.isFinite(d.getTime()) || d.getTime() <= 0) {
+                            return "--";
+                        }
                         return d.toLocaleDateString(undefined, {
                             month: "short",
                             day: "numeric",
@@ -1561,6 +1947,9 @@
                     formatDateTime(iso) {
                         if (!iso) return "--";
                         const d = new Date(iso);
+                        if (!Number.isFinite(d.getTime()) || d.getTime() <= 0) {
+                            return "--";
+                        }
                         return d.toLocaleString(undefined, {
                             year: "numeric",
                             month: "short",
@@ -1569,6 +1958,33 @@
                             minute: "2-digit",
                             second: "2-digit",
                         });
+                    },
+
+                    formatSuiteRunLabel(suiteRunId) {
+                        const d = this.parseStampedId(suiteRunId);
+                        if (!d) return suiteRunId;
+                        return d.toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        });
+                    },
+
+                    suiteRunMeta(suiteRun) {
+                        if (suiteRun.status === "running") {
+                            return (
+                                suiteRun.finishedRuns +
+                                "/" +
+                                suiteRun.totalRuns +
+                                " finished"
+                            );
+                        }
+                        return (
+                            suiteRun.totalRuns +
+                            " run" +
+                            (suiteRun.totalRuns !== 1 ? "s" : "")
+                        );
                     },
 
                     formatTimestamp(ts) {
@@ -1600,6 +2016,67 @@
                     formatNumber(n) {
                         if (n == null) return "0";
                         return n.toLocaleString();
+                    },
+
+                    parseStampedId(value) {
+                        if (!value) return null;
+                        const match = value.match(
+                            /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/,
+                        );
+                        if (!match) return null;
+                        const [, year, month, day, hour, minute, second, ms] =
+                            match;
+                        return new Date(
+                            Date.UTC(
+                                Number(year),
+                                Number(month) - 1,
+                                Number(day),
+                                Number(hour),
+                                Number(minute),
+                                Number(second),
+                                Number(ms),
+                            ),
+                        );
+                    },
+
+                    runSortKey(run) {
+                        const startedAt = run?.startedAt
+                            ? new Date(run.startedAt).getTime()
+                            : 0;
+                        if (Number.isFinite(startedAt) && startedAt > 0) {
+                            return startedAt;
+                        }
+                        return this.suiteRunSortKey(run?.suiteRunId || run?.dir);
+                    },
+
+                    suiteRunSortKey(value) {
+                        const stamped = this.parseStampedId(value);
+                        if (stamped) return stamped.getTime();
+                        return 0;
+                    },
+
+                    suiteRunStatus(children) {
+                        if (children.some((run) => run.status === "running")) {
+                            return "running";
+                        }
+                        if (children.some((run) => run.status === "crashed")) {
+                            return "crashed";
+                        }
+                        if (children.some((run) => run.status === "stalled")) {
+                            return "stalled";
+                        }
+                        if (children.some((run) => run.status === "timeout")) {
+                            return "timeout";
+                        }
+                        return "completed";
+                    },
+
+                    sortRuns() {
+                        this.runs.sort(
+                            (a, b) =>
+                                this.runSortKey(b) -
+                                this.runSortKey(a),
+                        );
                     },
                 };
             }
