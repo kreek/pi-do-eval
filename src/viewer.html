@@ -548,13 +548,16 @@
                 font-family: var(--pico-font-family-monospace, monospace);
                 font-size: 0.8rem;
                 line-height: 1.45;
-                white-space: pre-wrap;
+                white-space: normal;
                 word-break: break-all;
                 background: var(--background-muted);
                 padding: 0.5rem 0.6rem;
                 margin-top: 0.25rem;
                 max-height: 250px;
                 overflow-y: auto;
+            }
+            .tool-result span {
+                white-space: pre-wrap;
             }
             .file-write-item {
                 display: flex;
@@ -1456,8 +1459,116 @@
                     reportError: null,
                     _liveInterval: null,
                     _indexInterval: null,
+                    _eventSource: null,
+                    _sseConnected: false,
 
                     async init() {
+                        this._trySSE();
+                    },
+
+                    // -- SSE mode -------------------------------------------------
+
+                    _trySSE() {
+                        const source = new EventSource("/events");
+                        this._eventSource = source;
+
+                        source.onopen = () => {
+                            this._sseConnected = true;
+                            this.loading = false;
+                        };
+
+                        source.onmessage = (e) => {
+                            this._handleSSEEvent(JSON.parse(e.data));
+                        };
+
+                        source.onerror = () => {
+                            if (!this._sseConnected) {
+                                // SSE not available (e.g. served via npx serve)
+                                source.close();
+                                this._eventSource = null;
+                                this._initFilePolling();
+                            }
+                            // If already connected, EventSource auto-reconnects
+                        };
+                    },
+
+                    _handleSSEEvent(event) {
+                        switch (event.type) {
+                            case "index_updated":
+                                this.runs = event.runs;
+                                this.sortRuns();
+                                this._autoSelectIfNeeded();
+                                this.loading = false;
+                                break;
+
+                            case "run_started":
+                                if (!this.runs.find((r) => r.dir === event.dir)) {
+                                    this.runs.push({
+                                        dir: event.dir,
+                                        trial: event.trial,
+                                        variant: event.variant,
+                                        status: "running",
+                                        overall: 0,
+                                        durationMs: 0,
+                                        startedAt: new Date(event.timestamp).toISOString(),
+                                        workerModel: event.workerModel || "",
+                                        suite: event.suite,
+                                        suiteRunId: event.suiteRunId,
+                                    });
+                                    this.sortRuns();
+                                }
+                                break;
+
+                            case "run_progress":
+                                if (this.selectedDir === event.dir) {
+                                    this._fetchLive(event.dir);
+                                }
+                                break;
+
+                            case "run_completed": {
+                                const run = this.runs.find((r) => r.dir === event.dir);
+                                if (run) {
+                                    run.status = event.status;
+                                    run.overall = event.overall;
+                                    run.durationMs = event.durationMs;
+                                }
+                                if (this.selectedDir === event.dir) {
+                                    this._fetchReport(event.dir);
+                                }
+                                break;
+                            }
+                        }
+                    },
+
+                    _autoSelectIfNeeded() {
+                        if (this.selectedDir || this.selectedSuite) return;
+                        if (this.runs.length === 0) return;
+                        const runningRun = this.runs.find((r) => r.status === "running");
+                        if (runningRun) {
+                            this.selectRun(runningRun.dir);
+                        } else {
+                            const first = this.runList[0];
+                            if (first?.type === "suite") {
+                                this.selectSuite(first);
+                            } else if (first?.run) {
+                                this.selectRun(first.run.dir);
+                            }
+                        }
+                    },
+
+                    async _fetchReport(dir) {
+                        try {
+                            const resp = await fetch(`runs/${dir}/report.json`);
+                            if (resp.ok) {
+                                this.report = await resp.json();
+                                this.reportLoading = false;
+                            }
+                        } catch {}
+                    },
+
+                    // -- File polling fallback ------------------------------------
+
+                    async _initFilePolling() {
                         try {
                             const resp = await fetch("runs/index.json");
                             if (!resp.ok) {
@@ -1472,15 +1583,7 @@
                             } else {
                                 this.runs = await resp.json();
                                 this.sortRuns();
-                                // Auto-select first item
-                                if (this.runs.length > 0) {
-                                    const first = this.runList[0];
-                                    if (first?.type === 'suite') {
-                                        this.selectSuite(first);
-                                    } else if (first?.run) {
-                                        this.selectRun(first.run.dir);
-                                    }
-                                }
+                                this._autoSelectIfNeeded();
                             }
                             this._startIndexPolling();
                         } catch (e) {
@@ -1494,64 +1597,12 @@
                     _startIndexPolling() {
                         if (this._indexInterval)
                             clearInterval(this._indexInterval);
-                        const hasRunning = this.runs.some(
-                            (r) => r.status === "running",
-                        );
-                        if (!hasRunning) return;
                         this._indexInterval = setInterval(async () => {
                             try {
                                 const resp = await fetch("runs/index.json");
                                 if (resp.ok) {
                                     this.runs = await resp.json();
                                     this.sortRuns();
-                                }
-                                // Check each "running" run for completion or staleness
-                                for (const run of this.runs) {
-                                    if (run.status !== "running") continue;
-                                    try {
-                                        const r = await fetch(
-                                            `runs/${run.dir}/report.json`,
-                                        );
-                                        if (r.ok) {
-                                            const report = await r.json();
-                                            run.status =
-                                                report.meta?.status || "completed";
-                                            run.overall =
-                                                report.scores?.overall || 0;
-                                            continue;
-                                        }
-                                    } catch {}
-                                    // No report — check if live.json is stale
-                                    try {
-                                        const lr = await fetch(
-                                            `runs/${run.dir}/live.json`,
-                                        );
-                                        if (lr.ok) {
-                                            const live = await lr.json();
-                                            const elapsed =
-                                                Date.now() -
-                                                new Date(live.meta?.startedAt || run.startedAt).getTime() -
-                                                (live.meta?.durationMs || 0);
-                                            // If no update in 2+ minutes, mark crashed
-                                            if (elapsed > 120000) {
-                                                run.status = "crashed";
-                                            }
-                                        } else {
-                                            // No live.json and no report — crashed
-                                            const started = new Date(run.startedAt).getTime();
-                                            if (Date.now() - started > 120000) {
-                                                run.status = "crashed";
-                                            }
-                                        }
-                                    } catch {}
-                                }
-                                if (
-                                    !this.runs.some(
-                                        (r) => r.status === "running",
-                                    )
-                                ) {
-                                    clearInterval(this._indexInterval);
-                                    this._indexInterval = null;
                                 }
                             } catch {}
                         }, 5000);
@@ -1602,19 +1653,18 @@
                         try {
                             if (isLive) {
                                 await this._fetchLive(dir);
-                                this._liveInterval = setInterval(
-                                    () => this._pollLive(dir),
-                                    2000,
-                                );
-                            } else {
-                                const resp = await fetch(
-                                    `runs/${dir}/report.json`,
-                                );
-                                if (!resp.ok)
-                                    throw new Error(
-                                        `Failed to load report: ${resp.status}`,
+                                // Only poll in file-polling mode; SSE handles updates via run_progress
+                                if (!this._sseConnected) {
+                                    this._liveInterval = setInterval(
+                                        () => this._pollLive(dir),
+                                        2000,
                                     );
-                                this.report = await resp.json();
+                                }
+                            } else {
+                                await this._fetchReport(dir);
+                                if (!this.report) {
+                                    throw new Error("Failed to load report");
+                                }
                             }
                         } catch (e) {
                             this.reportError =
