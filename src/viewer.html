@@ -90,8 +90,8 @@
 
             /* ---------- Sidebar ---------- */
             .sidebar {
-                background: var(--background);
-                border-right: 1px solid var(--border-default);
+                background: var(--background-subtle);
+                border-right: 1px solid var(--background-subtle);
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
@@ -146,21 +146,22 @@
             }
             /* ---------- Run items ---------- */
             .run-list .run-item {
-                padding: 0.55rem calc(0.75rem + 5px) 0.55rem 0.5rem;
+                padding: 0.55rem calc(0.75rem + 5px) 0.55rem calc(0.5rem + 6px);
                 cursor: pointer;
-                background: var(--background);
+                background: var(--background-subtle);
                 color: var(--foreground);
                 border-bottom: 1px solid var(--border-muted);
                 transition: background-color 120ms ease;
             }
             .run-list .run-item:hover,
             .run-list .run-item.active {
-                background: var(--background-subtle);
+                background: var(--background);
                 border-top: none;
                 border-right: none;
             }
             .run-list .run-item.active {
                 border-left: 5px solid #5b9bd5;
+                padding-left: calc(0.5rem + 1px);
                 border-top: none;
                 border-right: none;
             }
@@ -177,6 +178,7 @@
             .run-list .suite-run-header.active {
                 background: #252b33;
                 border-top: 5px solid var(--suite-accent);
+                padding-left: calc(0.5rem + 6px);
             }
             /* Selected suite: light grey left+top edge on header and all children */
             .run-list .suite-selected .suite-run-header {
@@ -189,6 +191,7 @@
             /* Single child selected within a suite */
             .run-list .run-item-child.active {
                 border-left-color: #5b9bd5;
+                padding-left: 1.7rem;
             }
 
             /* Child items: left border to link with suite header */
@@ -209,7 +212,7 @@
             }
             .run-list .run-item-child:hover,
             .run-list .run-item-child.active {
-                background: var(--background-subtle);
+                background: var(--background);
             }
 
             .run-item-top {
@@ -801,7 +804,7 @@
                                         <div class="run-item-top">
                                             <span
                                                 class="run-item-name"
-                                                x-text="'SUITE: ' + item.suite"
+                                                x-text="'EVAL SUITE: ' + item.suite"
                                             ></span>
                                             <span
                                                 x-show="item.status === 'running'"
@@ -929,7 +932,7 @@
 
                 <!-- Suite summary view -->
                 <div x-show="selectedSuite && !reportLoading">
-                    <h2 x-text="'SUITE: ' + selectedSuite?.suite" style="text-transform: uppercase"></h2>
+                    <h2 x-text="'EVAL SUITE: ' + selectedSuite?.suite" style="text-transform: uppercase"></h2>
                     <div class="meta-grid">
                         <dl class="meta-card">
                             <dt>Runs</dt>
