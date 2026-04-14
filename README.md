@@ -166,11 +166,15 @@ export const plugin: EvalPlugin = {
 
 ## Put Your Agent on Trial
 
-A trial is a self-contained task that puts the extension to the test. The library itself only assumes one convention:
+A trial is a self-contained task that puts the extension to the test. Trials are intended to be resettable: each run should start from a known baseline so you can compare behavior across repeated runs.
+
+The library itself only assumes one convention:
 
 - If `trialDir/scaffold/` exists, `runEval` copies those files into `workDir` before spawning Pi.
 
-That is a copy step, not a reset step. `runEval` does not delete leftovers from a previous run, so reproducibility depends on using a fresh `workDir` each time or cleaning it yourself. The scaffolded harness solves this by creating a new timestamped `workdir/` for every run.
+Think of `trialDir/scaffold/` as that reset point: it is the baseline state that gets copied into the working directory at the start of a run.
+
+That copy step is not, by itself, a full reset step. `runEval` does not delete leftovers from a previous run, so reproducibility still depends on using a fresh `workDir` each time or cleaning it yourself. The scaffolded harness solves this by creating a new timestamped `workdir/` for every run.
 
 A typical trial in the scaffolded harness looks like:
 
