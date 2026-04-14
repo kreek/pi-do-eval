@@ -146,7 +146,7 @@
             }
             /* ---------- Run items ---------- */
             .run-list .run-item {
-                padding: 0.55rem 1.2rem;
+                padding: 0.55rem calc(0.75rem + 5px) 0.55rem 0.5rem;
                 cursor: pointer;
                 background: var(--background);
                 color: var(--foreground);
@@ -156,6 +156,13 @@
             .run-list .run-item:hover,
             .run-list .run-item.active {
                 background: var(--background-subtle);
+                border-top: none;
+                border-right: none;
+            }
+            .run-list .run-item.active {
+                border-left: 5px solid #5b9bd5;
+                border-top: none;
+                border-right: none;
             }
 
             /* Suite header */
@@ -169,30 +176,31 @@
             .run-list .suite-run-header:hover,
             .run-list .suite-run-header.active {
                 background: #252b33;
+                border-top: 5px solid var(--suite-accent);
             }
-            /* Selected suite: white left+top edge on header and all children */
+            /* Selected suite: light grey left+top edge on header and all children */
             .run-list .suite-selected .suite-run-header {
-                border-left-color: #fff;
-                border-top-color: #fff;
+                border-left-color: #5b9bd5;
+                border-top-color: #5b9bd5;
             }
             .run-list .suite-selected .run-item-child {
-                border-left-color: #fff;
+                border-left-color: #5b9bd5;
             }
             /* Single child selected within a suite */
             .run-list .run-item-child.active {
-                border-left-color: #fff;
+                border-left-color: #5b9bd5;
             }
 
             /* Child items: left border to link with suite header */
             .run-list .run-item-child {
-                padding: 0.45rem 1.2rem 0.45rem 2.6rem;
+                padding: 0.45rem calc(0.75rem + 5px) 0.45rem 1.7rem;
                 border-left: 5px solid var(--suite-accent);
                 position: relative;
             }
             .run-list .run-item-child::before {
                 content: "—";
                 position: absolute;
-                left: calc(0.55rem + 8px);
+                left: 0.5rem;
                 top: 0.45rem;
                 color: var(--foreground-subtle);
                 font-size: 0.8rem;
@@ -310,9 +318,14 @@
             }
 
             /* ---------- Content cards ---------- */
+            th {
+                text-transform: uppercase;
+                font-size: 0.75rem;
+                letter-spacing: 0.06em;
+            }
             .content-card {
                 background: var(--background-subtle);
-                border: 1px solid var(--border-default);
+                border: none;
                 padding: 1.25rem 1.5rem;
                 margin-bottom: 1.25rem;
             }
@@ -819,8 +832,7 @@
                                             <div
                                                 class="run-item run-item-child"
                                                 :class="{ active: selectedDir === run.dir }"
-                                                role="listitem"
-                                                :aria-current="selectedDir === run.dir ? 'page' : false"
+                                                        :aria-current="selectedDir === run.dir ? 'page' : false"
                                                 tabindex="0"
                                                 @click="selectRun(run.dir)"
                                                 @keydown.enter="selectRun(run.dir)"
@@ -856,7 +868,6 @@
                                 <div
                                     class="run-item"
                                     :class="{ active: selectedDir === item.run.dir }"
-                                    role="button"
                                     :aria-current="selectedDir === item.run.dir ? 'page' : false"
                                     tabindex="0"
                                     @click="selectRun(item.run.dir)"
@@ -983,29 +994,25 @@
                             <h3>Score Breakdown</h3>
                             <div style="overflow-x: auto">
                                 <table style="width: 100%; font-size: 0.85rem; border-collapse: collapse">
-                                    <thead>
-                                        <tr style="border-bottom: 1px solid var(--border-default)">
-                                            <th style="text-align: left; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Category</th>
+                                    <tr style="border-bottom: 1px solid var(--border-muted)">
+                                        <th style="text-align: left; padding: 0.4rem 0.6rem; color: var(--foreground-subtle)">Category</th>
+                                        <template x-for="run in selectedSuite?.children || []" :key="run.dir">
+                                            <th style="text-align: center; padding: 0.4rem 0.6rem; color: var(--foreground-subtle); font-size: 0.78rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis" x-text="run.trial"></th>
+                                        </template>
+                                    </tr>
+                                    <template x-for="cat in suiteScoreCategories" :key="cat">
+                                        <tr style="border-bottom: 1px solid var(--border-muted)">
+                                            <td style="padding: 0.4rem 0.6rem; font-weight: 500" x-text="formatScoreKey(cat)"></td>
                                             <template x-for="run in selectedSuite?.children || []" :key="run.dir">
-                                                <th style="text-align: center; padding: 0.4rem 0.6rem; color: var(--foreground-subtle); font-size: 0.78rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis" x-text="run.trial"></th>
+                                                <td style="text-align: center; padding: 0.4rem 0.6rem">
+                                                    <span
+                                                        :style="'color:' + scoreColor(suiteReports[run.dir]?.scores?.deterministic?.[cat] ?? suiteReports[run.dir]?.scores?.judge?.[cat])"
+                                                        x-text="suiteReports[run.dir]?.scores?.deterministic?.[cat] ?? suiteReports[run.dir]?.scores?.judge?.[cat] ?? '—'"
+                                                    ></span>
+                                                </td>
                                             </template>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        <template x-for="cat in suiteScoreCategories" :key="cat">
-                                            <tr style="border-bottom: 1px solid var(--border-muted)">
-                                                <td style="padding: 0.4rem 0.6rem; font-weight: 500" x-text="formatScoreKey(cat)"></td>
-                                                <template x-for="run in selectedSuite?.children || []" :key="run.dir">
-                                                    <td style="text-align: center; padding: 0.4rem 0.6rem">
-                                                        <span
-                                                            :style="'color:' + scoreColor(suiteReports[run.dir]?.scores?.deterministic?.[cat] ?? suiteReports[run.dir]?.scores?.judge?.[cat])"
-                                                            x-text="suiteReports[run.dir]?.scores?.deterministic?.[cat] ?? suiteReports[run.dir]?.scores?.judge?.[cat] ?? '—'"
-                                                        ></span>
-                                                    </td>
-                                                </template>
-                                            </tr>
-                                        </template>
-                                    </tbody>
+                                    </template>
                                 </table>
                             </div>
                         </div>
