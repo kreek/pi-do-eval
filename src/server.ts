@@ -5,6 +5,7 @@ import type { EvalEvent, RunIndexEntry } from "./types.js";
 
 const DEFAULT_PORT = 4242;
 const DEBOUNCE_MS = 300;
+const VIEWER_ASSETS = new Set(["viewer.css", "viewer.js"]);
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -97,6 +98,11 @@ export class EvalServer {
       return;
     }
 
+    if (VIEWER_ASSETS.has(pathname.slice(1))) {
+      this.serveViewerAsset(pathname.slice(1), res);
+      return;
+    }
+
     if (pathname.startsWith("/runs/")) {
       this.serveRunFile(pathname, res);
       return;
@@ -135,6 +141,19 @@ export class EvalServer {
     } catch {
       res.writeHead(500);
       res.end("Failed to load viewer");
+    }
+  }
+
+  private serveViewerAsset(fileName: string, res: http.ServerResponse): void {
+    const assetPath = new URL(`./${fileName}`, import.meta.url);
+    try {
+      const content = fs.readFileSync(assetPath);
+      const mime = MIME[path.extname(fileName)] ?? "application/octet-stream";
+      res.writeHead(200, { "Content-Type": mime });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
     }
   }
 
