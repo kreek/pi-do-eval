@@ -129,6 +129,24 @@ describe("EvalServer", () => {
     expect(body).toContain("Pi, do Eval");
   });
 
+  it("serves viewer assets", async () => {
+    const dir = makeTempDir();
+    const port = getPort();
+    const server = new EvalServer(dir, port);
+    servers.push(server);
+    server.start();
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const css = await httpGet(`http://localhost:${port}/viewer.css`);
+    const js = await httpGet(`http://localhost:${port}/viewer.js`);
+
+    expect(css.status).toBe(200);
+    expect(css.body).toContain(":root");
+    expect(js.status).toBe(200);
+    expect(js.body).toContain("createEvalViewer");
+  });
+
   it("serves run files from /runs/", async () => {
     const dir = makeTempDir();
     const runsPath = path.join(dir, "runs", "test-run");
@@ -359,6 +377,9 @@ describe("EvalServer", () => {
         typeof event === "object" && event !== null && "type" in event && event.type === "run_completed",
     );
     expect(completed).toBeDefined();
+    if (!completed) {
+      throw new Error("Expected a run_completed event");
+    }
     expect(completed.overall).toBe(0.85);
   });
 });

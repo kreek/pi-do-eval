@@ -19,7 +19,7 @@ const testPlugin: EvalPlugin = {
     if (/\.test\.|\.spec\.|_test\.|\/test\//.test(filePath)) return "test";
     return "production";
   },
-  parseEvent(toolName, resultText, timestamp) {
+  parseEvent(_toolName, resultText, timestamp) {
     const events: PluginEvent[] = [];
     if (resultText.includes("TDD enabled")) {
       events.push({ timestamp, type: "phase_change", data: { to: "specifying" } });
