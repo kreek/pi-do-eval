@@ -4,7 +4,6 @@ import type {
   AggregatedSuiteEntry,
   EpochStats,
   EvalReport,
-  EvalRunStatus,
   StatusCounts,
   SuiteComparison,
   SuiteComparisonEntry,
@@ -169,6 +168,17 @@ function isHardFailure(entry: SuiteReportEntry): boolean {
   return entry.status !== "completed" || !entry.verifyPassed;
 }
 
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function averageAggregatedOverall(entries: Iterable<AggregatedSuiteEntry>): number {
+  const aggregated = [...entries];
+  if (aggregated.length === 0) return 0;
+  const total = aggregated.reduce((sum, entry) => sum + entry.overall.mean, 0);
+  return roundToTenth(total / aggregated.length);
+}
+
 function completedCount(entry: AggregatedSuiteEntry): number {
   return entry.statusCounts.completed ?? 0;
 }
@@ -215,7 +225,7 @@ export function buildSuiteReportEntry(report: EvalReport, runDir: string): Suite
 }
 
 export function summarizeSuiteEntries(entries: SuiteReportEntry[]): SuiteReport["summary"] {
-  const totalOverall = entries.reduce((sum, entry) => sum + entry.overall, 0);
+  const aggregated = aggregateEpochEntries(entries);
   const hardFailureCount = entries.filter(isHardFailure).length;
   const verifyFailureCount = entries.filter((entry) => !entry.verifyPassed).length;
   const completedRuns = entries.filter((entry) => entry.status === "completed").length;
@@ -225,7 +235,7 @@ export function summarizeSuiteEntries(entries: SuiteReportEntry[]): SuiteReport[
     completedRuns,
     verifyFailureCount,
     hardFailureCount,
-    averageOverall: entries.length > 0 ? Math.round((totalOverall / entries.length) * 10) / 10 : 0,
+    averageOverall: averageAggregatedOverall(aggregated),
   };
 }
 
@@ -238,6 +248,7 @@ export function createSuiteReport(
 ): SuiteReport {
   const entries = reports.map(({ report, runDir }) => buildSuiteReportEntry(report, runDir));
   const sortedEntries = [...entries].sort((a, b) => suiteEntryKey(a).localeCompare(suiteEntryKey(b)));
+  const aggregated = aggregateEpochEntries(sortedEntries);
   const startedAt =
     reports
       .map(({ report }) => report.meta.startedAt)
@@ -255,7 +266,7 @@ export function createSuiteReport(
     completedAt,
     entries: sortedEntries,
     summary,
-    ...(hasEpochs ? { epochs, aggregated: aggregateEpochEntries(sortedEntries) } : {}),
+    ...(hasEpochs ? { epochs, aggregated } : {}),
   };
 }
 
@@ -286,7 +297,7 @@ export function updateSuiteIndex(runsDir: string) {
       completedAt: report.completedAt,
       totalRuns: report.summary.totalRuns,
       hardFailureCount: report.summary.hardFailureCount,
-      averageOverall: report.summary.averageOverall,
+      averageOverall: averageAggregatedOverall(buildAggregatedEntryMap(report).values()),
       ...(report.epochs ? { epochs: report.epochs } : {}),
     });
   }
@@ -452,12 +463,14 @@ export function compareSuiteReports(
     ),
   );
 
+  const currentAverageOverall = averageAggregatedOverall(currentAgg.values());
+  const baselineAverageOverall = averageAggregatedOverall(baselineAgg.values());
   const findings = entries.flatMap((entry) =>
     entry.findings.map((finding) => `${entry.trial}/${entry.variant}: ${finding}`),
   );
 
-  const averageDelta = Math.round((current.summary.averageOverall - baseline.summary.averageOverall) * 10) / 10;
-  if (baseline.summary.averageOverall - current.summary.averageOverall > threshold) {
+  const averageDelta = roundToTenth(currentAverageOverall - baselineAverageOverall);
+  if (baselineAverageOverall - currentAverageOverall > threshold) {
     findings.unshift(`Suite average overall dropped by ${Math.abs(averageDelta)} points`);
   } else if (averageDelta > threshold) {
     findings.unshift(`Suite average overall improved by ${averageDelta} points`);
@@ -472,14 +485,13 @@ export function compareSuiteReports(
     currentSuiteRunId: current.suiteRunId,
     baselineSuiteRunId: baseline.suiteRunId,
     threshold,
-    currentAverageOverall: current.summary.averageOverall,
-    baselineAverageOverall: baseline.summary.averageOverall,
+    currentAverageOverall,
+    baselineAverageOverall,
     averageDelta,
     entries,
     findings,
     hasRegression:
-      entries.some((entry) => entry.regression) ||
-      baseline.summary.averageOverall - current.summary.averageOverall > threshold,
+      entries.some((entry) => entry.regression) || baselineAverageOverall - currentAverageOverall > threshold,
     hardRegressionCount,
     significantRegressionCount,
     driftCount,

@@ -81,6 +81,14 @@ function makeSuite(entries: Array<{ report: EvalReport; runDir: string }>, suite
   return createSuiteReport("small", suiteRunId, entries, "2026-01-01T00:10:00Z");
 }
 
+function expectPresent<T>(value: T | null | undefined, label: string): NonNullable<T> {
+  expect(value).toBeDefined();
+  if (value == null) {
+    throw new Error(`Missing ${label}`);
+  }
+  return value;
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -311,15 +319,17 @@ describe("aggregateEpochEntries", () => {
     const agg = aggregateEpochEntries(entries);
     expect(agg).toHaveLength(1);
 
-    const entry = agg[0]!;
+    const entry = expectPresent(agg[0], "aggregated entry");
+    const quality = expectPresent(entry.deterministic.quality, "quality stats");
+    const coverage = expectPresent(entry.deterministic.coverage, "coverage stats");
     expect(entry.trial).toBe("todo-cli");
     expect(entry.variant).toBe("ts");
     expect(entry.epochs).toBe(3);
     expect(entry.runDirs).toEqual(["run-1", "run-2", "run-3"]);
     expect(entry.overall.mean).toBe(80);
     expect(entry.overall.n).toBe(3);
-    expect(entry.deterministic["quality"]!.mean).toBe(80);
-    expect(entry.deterministic["coverage"]!.mean).toBeCloseTo(70, 0);
+    expect(quality.mean).toBe(80);
+    expect(coverage.mean).toBeCloseTo(70, 0);
     expect(entry.statusCounts).toEqual({ completed: 3 });
     expect(entry.verifyPassCount).toBe(3);
   });
@@ -332,8 +342,9 @@ describe("aggregateEpochEntries", () => {
     ];
 
     const agg = aggregateEpochEntries(entries);
-    expect(agg[0]!.statusCounts).toEqual({ completed: 2, timeout: 1 });
-    expect(agg[0]!.verifyPassCount).toBe(2);
+    const entry = expectPresent(agg[0], "aggregated entry");
+    expect(entry.statusCounts).toEqual({ completed: 2, timeout: 1 });
+    expect(entry.verifyPassCount).toBe(2);
   });
 
   it("handles judge scores present in some epochs", () => {
@@ -344,9 +355,12 @@ describe("aggregateEpochEntries", () => {
     ];
 
     const agg = aggregateEpochEntries(entries);
+    const entry = expectPresent(agg[0], "aggregated entry");
+    const judge = expectPresent(entry.judge, "judge stats");
+    const readability = expectPresent(judge.readability, "readability stats");
     // Only 2 epochs had judge scores
-    expect(agg[0]!.judge?.["readability"]!.n).toBe(2);
-    expect(agg[0]!.judge?.["readability"]!.mean).toBe(80);
+    expect(readability.n).toBe(2);
+    expect(readability.mean).toBe(80);
   });
 
   it("groups multiple trials correctly", () => {
@@ -370,7 +384,8 @@ describe("aggregateEpochEntries", () => {
     ];
 
     const agg = aggregateEpochEntries(entries);
-    expect(agg[0]!.findings).toEqual(["Slow response", "Missing tests", "Low coverage"]);
+    const entry = expectPresent(agg[0], "aggregated entry");
+    expect(entry.findings).toEqual(["Slow response", "Missing tests", "Low coverage"]);
   });
 });
 
@@ -401,9 +416,13 @@ describe("createSuiteReport with epochs", () => {
     expect(suite.summary.epochs).toBe(3);
     expect(suite.aggregated).toHaveLength(2);
 
-    const todo = suite.aggregated!.find((a) => a.trial === "todo-cli");
-    expect(todo?.overall.mean).toBe(80);
-    expect(todo?.epochs).toBe(3);
+    const aggregated = expectPresent(suite.aggregated, "aggregated suite");
+    const todo = expectPresent(
+      aggregated.find((a) => a.trial === "todo-cli"),
+      "todo aggregated entry",
+    );
+    expect(todo.overall.mean).toBe(80);
+    expect(todo.epochs).toBe(3);
   });
 
   it("omits aggregated when epochs is 1 or omitted", () => {
@@ -469,18 +488,25 @@ describe("createSuiteReport with epochs", () => {
 describe("compareSuiteReports with epochs", () => {
   function makeEpochSuite(
     suiteRunId: string,
-    entries: Array<{ trial: string; variant: string; overalls: number[]; statuses?: string[]; verifies?: boolean[] }>,
+    entries: Array<{
+      trial: string;
+      variant: string;
+      overalls: number[];
+      statuses?: EvalReport["meta"]["status"][];
+      verifies?: boolean[];
+    }>,
   ): SuiteReport {
     const reports: Array<{ report: EvalReport; runDir: string }> = [];
     for (const entry of entries) {
       for (let i = 0; i < entry.overalls.length; i++) {
+        const overall = expectPresent(entry.overalls[i], `overall score ${i}`);
         reports.push({
           report: makeReport(entry.trial, entry.variant, {
-            scores: { deterministic: { quality: entry.overalls[i]! }, overall: entry.overalls[i]! },
+            scores: { deterministic: { quality: overall }, overall },
             meta: {
               trial: entry.trial,
               variant: entry.variant,
-              status: (entry.statuses?.[i] ?? "completed") as any,
+              status: entry.statuses?.[i] ?? "completed",
             },
             findings: entry.verifies?.[i] === false ? ["Verification failed"] : [],
           }),
@@ -496,7 +522,7 @@ describe("compareSuiteReports with epochs", () => {
     const current = makeEpochSuite("s-011", [{ trial: "todo", variant: "ts", overalls: [58, 60, 62] }]);
 
     const comparison = compareSuiteReports(current, baseline);
-    const entry = comparison.entries[0]!;
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
     expect(entry.severity).toBe("significant");
     expect(entry.regression).toBe(true);
     expect(comparison.hasRegression).toBe(true);
@@ -508,7 +534,7 @@ describe("compareSuiteReports with epochs", () => {
     const current = makeEpochSuite("s-021", [{ trial: "todo", variant: "ts", overalls: [73, 78, 83] }]);
 
     const comparison = compareSuiteReports(current, baseline);
-    const entry = comparison.entries[0]!;
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
     expect(entry.severity).toBe("drift");
     expect(entry.regression).toBe(false);
     expect(comparison.hasRegression).toBe(false);
@@ -522,7 +548,7 @@ describe("compareSuiteReports with epochs", () => {
     ]);
 
     const comparison = compareSuiteReports(current, baseline);
-    const entry = comparison.entries[0]!;
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
     expect(entry.severity).toBe("hard");
     expect(entry.regression).toBe(true);
     expect(comparison.hardRegressionCount).toBe(1);
@@ -535,7 +561,8 @@ describe("compareSuiteReports with epochs", () => {
     ]);
 
     const comparison = compareSuiteReports(current, baseline);
-    expect(comparison.entries[0]!.severity).toBe("hard");
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
+    expect(entry.severity).toBe("hard");
   });
 
   it("compares mixed epoch counts using aggregated data instead of the last epoch only", () => {
@@ -543,9 +570,10 @@ describe("compareSuiteReports with epochs", () => {
     const current = makeEpochSuite("s-046", [{ trial: "todo", variant: "ts", overalls: [58, 60, 62] }]);
 
     const comparison = compareSuiteReports(current, baseline);
-    expect(comparison.entries[0]!.severity).toBe("significant");
-    expect(comparison.entries[0]!.currentAggregated?.epochs).toBe(3);
-    expect(comparison.entries[0]!.baselineAggregated?.epochs).toBe(1);
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
+    expect(entry.severity).toBe("significant");
+    expect(entry.currentAggregated?.epochs).toBe(3);
+    expect(entry.baselineAggregated?.epochs).toBe(1);
   });
 
   it("detects hard regression when completion rate worsens from an already flaky baseline", () => {
@@ -557,8 +585,44 @@ describe("compareSuiteReports with epochs", () => {
     ]);
 
     const comparison = compareSuiteReports(current, baseline);
-    expect(comparison.entries[0]!.severity).toBe("hard");
-    expect(comparison.entries[0]!.findings[0]).toContain("Completion rate regressed");
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
+    expect(entry.severity).toBe("hard");
+    expect(entry.findings[0]).toContain("Completion rate regressed");
+  });
+
+  it("does not treat extra epochs as a suite-level regression when per-trial means are unchanged", () => {
+    const baseline = makeSuite(
+      [
+        { report: makeReport("todo", "ts", { scores: { deterministic: { quality: 60 }, overall: 60 } }), runDir: "b1" },
+        {
+          report: makeReport("api", "ts", { scores: { deterministic: { quality: 100 }, overall: 100 } }),
+          runDir: "b2",
+        },
+      ],
+      "suite-049",
+    );
+    const current = createSuiteReport(
+      "small",
+      "suite-050",
+      [
+        { report: makeReport("todo", "ts", { scores: { deterministic: { quality: 58 }, overall: 58 } }), runDir: "c1" },
+        { report: makeReport("todo", "ts", { scores: { deterministic: { quality: 60 }, overall: 60 } }), runDir: "c2" },
+        { report: makeReport("todo", "ts", { scores: { deterministic: { quality: 62 }, overall: 62 } }), runDir: "c3" },
+        {
+          report: makeReport("api", "ts", { scores: { deterministic: { quality: 100 }, overall: 100 } }),
+          runDir: "c4",
+        },
+      ],
+      "2026-01-01T00:10:00Z",
+      3,
+    );
+
+    const comparison = compareSuiteReports(current, baseline, { threshold: 3 });
+    expect(current.summary.averageOverall).toBe(80);
+    expect(comparison.currentAverageOverall).toBe(80);
+    expect(comparison.baselineAverageOverall).toBe(80);
+    expect(comparison.hasRegression).toBe(false);
+    expect(comparison.findings).toEqual([]);
   });
 
   it("preserves backward compat: single-epoch uses flat threshold with severity", () => {
@@ -586,7 +650,7 @@ describe("compareSuiteReports with epochs", () => {
     );
 
     const comparison = compareSuiteReports(current, baseline, { threshold: 5 });
-    const entry = comparison.entries[0]!;
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
     expect(entry.severity).toBe("significant");
     expect(entry.regression).toBe(true);
     expect(comparison.significantRegressionCount).toBe(1);
@@ -618,7 +682,8 @@ describe("compareSuiteReports with epochs", () => {
     );
 
     const comparison = compareSuiteReports(current, baseline);
-    expect(comparison.entries[0]!.severity).toBe("hard");
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
+    expect(entry.severity).toBe("hard");
     expect(comparison.hardRegressionCount).toBe(1);
   });
 
@@ -627,8 +692,9 @@ describe("compareSuiteReports with epochs", () => {
     const current = makeEpochSuite("s-071", [{ trial: "todo", variant: "ts", overalls: [80, 80, 80] }]);
 
     const comparison = compareSuiteReports(current, baseline);
-    expect(comparison.entries[0]!.severity).toBeUndefined();
-    expect(comparison.entries[0]!.regression).toBe(false);
+    const entry = expectPresent(comparison.entries[0], "comparison entry");
+    expect(entry.severity).toBeUndefined();
+    expect(entry.regression).toBe(false);
     expect(comparison.hasRegression).toBe(false);
   });
 });
