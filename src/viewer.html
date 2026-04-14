@@ -200,13 +200,29 @@
                 border-left: 5px solid var(--suite-accent);
                 position: relative;
             }
+            /* Vertical line spanning full height */
             .run-list .run-item-child::before {
-                content: "—";
+                content: "";
                 position: absolute;
-                left: 0.5rem;
-                top: 0.45rem;
-                color: var(--foreground-subtle);
-                font-size: 0.8rem;
+                left: 0.75rem;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                background: var(--foreground-subtle);
+            }
+            /* Horizontal branch connector */
+            .run-list .run-item-child::after {
+                content: "";
+                position: absolute;
+                left: 0.75rem;
+                top: 50%;
+                width: 0.5rem;
+                height: 1px;
+                background: var(--foreground-subtle);
+            }
+            /* Last child: vertical line stops at the branch */
+            .run-list .run-item-child:last-child::before {
+                bottom: 50%;
             }
             .suite-run-children {
             }

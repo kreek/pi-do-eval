@@ -199,7 +199,7 @@ function buildPrompt(config: TrialConfig, variant: VariantConfig): string {
     const parts = [prefix, core, s.setup ?? ""].filter(Boolean);
     return parts.join(" ");
   });
-  return [\`Implement all user stories in the attached task. @\${config.taskFile}\`, ...stackInstructions].join(" ");
+  return [\`Implement all user stories in the attached task. @\${config.taskFile}\`, ...stackInstructions, "Do not stop until the task is fully complete."].join(" ");
 }
 
 interface RunTrialOpts {
