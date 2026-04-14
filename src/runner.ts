@@ -10,7 +10,9 @@ export interface LiveOptions {
   runDir: string;
   runsDir: string;
   intervalMs?: number;
-  meta: Pick<EvalMeta, "trial" | "variant" | "suite" | "suiteRunId"> & { workerModel?: string };
+  meta: Pick<EvalMeta, "trial" | "variant" | "suite" | "suiteRunId" | "epoch" | "totalEpochs"> & {
+    workerModel?: string;
+  };
   emit?: (event: EvalEvent) => void;
 }
 
@@ -150,7 +152,6 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
           timestamp: Date.now(),
           dir: path.basename(live.runDir),
           status,
-          overall: 0,
           durationMs: Date.now() - startMs,
         });
       }

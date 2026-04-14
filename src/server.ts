@@ -20,6 +20,12 @@ export class EvalServer {
   private watcher: fs.FSWatcher | null = null;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private lastIndex: string | null = null;
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  /** Number of events emitted (for testing). */
+  get eventCount(): number {
+    return this.events.length;
+  }
 
   constructor(
     private runsDir: string,
@@ -51,6 +57,10 @@ export class EvalServer {
       this.watcher.close();
       this.watcher = null;
     }
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
     for (const timer of this.debounceTimers.values()) clearTimeout(timer);
     this.debounceTimers.clear();
     for (const client of this.clients) client.end();
@@ -60,6 +70,10 @@ export class EvalServer {
   }
 
   emit(event: EvalEvent): void {
+    // index_updated carries full state — discard everything before it
+    if (event.type === "index_updated") {
+      this.events.length = 0;
+    }
     this.events.push(event);
     const data = `data: ${JSON.stringify(event)}\n\n`;
     for (const client of this.clients) {
@@ -125,16 +139,33 @@ export class EvalServer {
   }
 
   private serveRunFile(pathname: string, res: http.ServerResponse): void {
-    // Prevent path traversal
     const relative = pathname.slice(1); // remove leading /
-    if (relative.includes("..")) {
+    const runsRoot = path.join(this.runsDir, "runs") + path.sep;
+    const filePath = path.join(this.runsDir, relative);
+
+    // Resolved path must stay within runs/
+    if (!filePath.startsWith(runsRoot)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;
     }
 
-    const filePath = path.join(this.runsDir, relative);
     if (!fs.existsSync(filePath)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+
+    // Follow symlinks and re-check — prevent symlink escapes
+    try {
+      const realPath = fs.realpathSync(filePath);
+      const realRunsRoot = fs.realpathSync(path.join(this.runsDir, "runs")) + path.sep;
+      if (!realPath.startsWith(realRunsRoot)) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+    } catch {
       res.writeHead(404);
       res.end("Not found");
       return;
@@ -163,7 +194,7 @@ export class EvalServer {
       });
     } catch {
       // fs.watch may not be available; fall back to polling
-      setInterval(() => this.loadAndEmitIndex(), 5000);
+      this.pollInterval = setInterval(() => this.loadAndEmitIndex(), 5000);
     }
   }
 
