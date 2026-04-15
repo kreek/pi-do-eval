@@ -161,3 +161,125 @@ describe("scoreSession", () => {
     ]);
   });
 });
+
+describe("budget assertions", () => {
+  const simplePlugin = makePlugin({
+    scores: { quality: 80 },
+    weights: { quality: 1 },
+    findings: [],
+  });
+
+  const sessionWithData: EvalSession = {
+    ...stubSession,
+    tokenUsage: { input: 5000, output: 3000 },
+    startTime: 0,
+    endTime: 60_000,
+    toolCalls: [
+      { timestamp: 0, name: "write", arguments: {}, resultText: "", wasBlocked: false },
+      { timestamp: 1, name: "read", arguments: {}, resultText: "", wasBlocked: false },
+      { timestamp: 2, name: "exec", arguments: {}, resultText: "", wasBlocked: true },
+    ],
+    fileWrites: [
+      { timestamp: 0, path: "src/a.ts", tool: "write", labels: [] },
+      { timestamp: 1, path: "src/b.ts", tool: "write", labels: [] },
+    ],
+  };
+
+  it("adds no issues when no budgets configured", () => {
+    const result = scoreSession({ session: sessionWithData, verify: stubVerify, plugin: simplePlugin });
+    expect(result.issues).toEqual([]);
+  });
+
+  it("adds no issues when all within budget", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxTotalTokens: 100_000, maxToolCalls: 100, maxBlockedCalls: 5 },
+    });
+    expect(result.issues).toEqual([]);
+  });
+
+  it("flags input token budget exceeded", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxInputTokens: 4000 },
+    });
+    expect(result.issues).toContain("Input tokens (5000) exceeded budget (4000).");
+  });
+
+  it("flags output token budget exceeded", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxOutputTokens: 2000 },
+    });
+    expect(result.issues).toContain("Output tokens (3000) exceeded budget (2000).");
+  });
+
+  it("flags total token budget exceeded", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxTotalTokens: 7000 },
+    });
+    expect(result.issues).toContain("Total tokens (8000) exceeded budget (7000).");
+  });
+
+  it("flags duration exceeded", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxDurationMs: 30_000 },
+    });
+    expect(result.issues).toContain("Duration (60000ms) exceeded budget (30000ms).");
+  });
+
+  it("flags tool call limit exceeded", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxToolCalls: 2 },
+    });
+    expect(result.issues).toContain("Tool calls (3) exceeded budget (2).");
+  });
+
+  it("flags blocked call limit exceeded, counting only blocked calls", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxBlockedCalls: 0 },
+    });
+    expect(result.issues).toContain("Blocked tool calls (1) exceeded budget (0).");
+  });
+
+  it("flags file write limit exceeded", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxFileWrites: 1 },
+    });
+    expect(result.issues).toContain("File writes (2) exceeded budget (1).");
+  });
+
+  it("reports all violations, not just the first", () => {
+    const result = scoreSession({
+      session: sessionWithData,
+      verify: stubVerify,
+      plugin: simplePlugin,
+      budgets: { maxTotalTokens: 1000, maxToolCalls: 1, maxFileWrites: 0 },
+    });
+    expect(result.issues).toHaveLength(3);
+    expect(result.issues[0]).toContain("Total tokens");
+    expect(result.issues[1]).toContain("Tool calls");
+    expect(result.issues[2]).toContain("File writes");
+  });
+});

@@ -27,6 +27,7 @@ export {
 } from "./suites.js";
 export type {
   AggregatedSuiteEntry,
+  BudgetConfig,
   EpochStats,
   EvalEvent,
   EvalMeta,

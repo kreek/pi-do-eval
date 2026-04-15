@@ -93,6 +93,16 @@ export interface SuiteEntry {
   epochs?: number;
 }
 
+export interface BudgetConfig {
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  maxTotalTokens?: number;
+  maxDurationMs?: number;
+  maxToolCalls?: number;
+  maxBlockedCalls?: number;
+  maxFileWrites?: number;
+}
+
 export interface EvalConfig {
   worker?: ModelConfig;
   judge?: ModelConfig;
@@ -102,6 +112,7 @@ export interface EvalConfig {
     judgeMs?: number;
   };
   epochs?: number;
+  budgets?: BudgetConfig;
   suites?: Record<string, SuiteEntry[]>;
   runSets?: Record<string, SuiteEntry[]>;
   regressions?: {
@@ -129,6 +140,12 @@ const config: EvalConfig = {
     judgeMs: 2 * 60 * 1000,
   },
   // epochs: 3,  // Run each trial N times to measure stability on the same task
+  // budgets: {
+  //   maxTotalTokens: 100_000,
+  //   maxDurationMs: 5 * 60 * 1000,
+  //   maxToolCalls: 200,
+  //   maxBlockedCalls: 0,
+  // },
   suites: {
     small,
     quick: small,
@@ -317,7 +334,7 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
     }
   }
 
-  const scores = scoreSession({ session, verify, plugin, judgeResult });
+  const scores = scoreSession({ session, verify, plugin, judgeResult, budgets: evalConfig.budgets });
 
   const findings: string[] = [];
   findings.push(...scores.issues);

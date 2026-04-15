@@ -1,10 +1,11 @@
-import type { EvalPlugin, EvalScores, EvalSession, JudgeResult, VerifyResult } from "./types.js";
+import type { BudgetConfig, EvalPlugin, EvalScores, EvalSession, JudgeResult, VerifyResult } from "./types.js";
 
 interface ScoreContext {
   session: EvalSession;
   verify: VerifyResult;
   plugin: EvalPlugin;
   judgeResult?: JudgeResult;
+  budgets?: BudgetConfig;
 }
 
 const DEFAULT_JUDGE_WEIGHT = 0.1;
@@ -118,10 +119,45 @@ export function scoreSession(ctx: ScoreContext): EvalScores {
 
   const overall = weightSum > 0 ? Math.round(weightedTotal / weightSum) : 0;
 
+  if (ctx.budgets) checkBudgets(ctx.session, ctx.budgets, issues);
+
   return {
     deterministic,
     ...(judge && Object.keys(judge).length > 0 ? { judge } : {}),
     overall,
     issues,
   };
+}
+
+function checkBudgets(session: EvalSession, budgets: BudgetConfig, issues: string[]): void {
+  const { tokenUsage, toolCalls, fileWrites } = session;
+  const totalTokens = tokenUsage.input + tokenUsage.output;
+
+  if (budgets.maxInputTokens != null && tokenUsage.input > budgets.maxInputTokens) {
+    issues.push(`Input tokens (${tokenUsage.input}) exceeded budget (${budgets.maxInputTokens}).`);
+  }
+  if (budgets.maxOutputTokens != null && tokenUsage.output > budgets.maxOutputTokens) {
+    issues.push(`Output tokens (${tokenUsage.output}) exceeded budget (${budgets.maxOutputTokens}).`);
+  }
+  if (budgets.maxTotalTokens != null && totalTokens > budgets.maxTotalTokens) {
+    issues.push(`Total tokens (${totalTokens}) exceeded budget (${budgets.maxTotalTokens}).`);
+  }
+  if (budgets.maxDurationMs != null) {
+    const duration = session.endTime - session.startTime;
+    if (duration > budgets.maxDurationMs) {
+      issues.push(`Duration (${duration}ms) exceeded budget (${budgets.maxDurationMs}ms).`);
+    }
+  }
+  if (budgets.maxToolCalls != null && toolCalls.length > budgets.maxToolCalls) {
+    issues.push(`Tool calls (${toolCalls.length}) exceeded budget (${budgets.maxToolCalls}).`);
+  }
+  if (budgets.maxBlockedCalls != null) {
+    const blocked = toolCalls.filter((tc) => tc.wasBlocked).length;
+    if (blocked > budgets.maxBlockedCalls) {
+      issues.push(`Blocked tool calls (${blocked}) exceeded budget (${budgets.maxBlockedCalls}).`);
+    }
+  }
+  if (budgets.maxFileWrites != null && fileWrites.length > budgets.maxFileWrites) {
+    issues.push(`File writes (${fileWrites.length}) exceeded budget (${budgets.maxFileWrites}).`);
+  }
 }

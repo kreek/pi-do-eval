@@ -34,6 +34,18 @@ export interface EvalSession {
   parseWarnings: number;
 }
 
+// -- Budget assertions ---------------------------------------------------------
+
+export interface BudgetConfig {
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  maxTotalTokens?: number;
+  maxDurationMs?: number;
+  maxToolCalls?: number;
+  maxBlockedCalls?: number;
+  maxFileWrites?: number;
+}
+
 // -- Verification --------------------------------------------------------------
 
 export interface VerifyResult {
