@@ -1,6 +1,6 @@
 # Pi, do Eval 😈😇
 
-Use Pi to eval Pi (extensions). "Pi, do Eval" is a framework for building your own Pi-based evaluation harnesses. Use it to evaluate an extension you created, iterate on its behavior, and catch regressions as you improve it.
+Use Pi to eval Pi (extensions). "Pi, do Eval" is a framework for building your own Pi-based evaluation harnesses. Use it to analyze agent behavior over a consistent set of trials, iterate on that behavior, and catch regressions as you improve an extension.
 
 A harness built with `pi-do-eval` can:
 
@@ -18,7 +18,7 @@ It ships a small scaffold command, `pi-do-eval init`, which generates a working 
 2. `pi-do-eval` parses the JSONL session into tool calls, file writes, and optional plugin-specific events.
 3. Your plugin can run independent verification after the worker session completes.
 4. Your harness can spawn `pi -p --mode json --no-extensions` as a judge.
-5. Deterministic plugin scores and judge scores are combined into a weighted final report.
+5. Deterministic plugin scores and optional judge scores are combined into a final report built for agent improvement and non-regression tracking.
 
 Note: The eval prompt is deliberately minimal; the extension's own system prompt should drive the behavior.
 
@@ -113,6 +113,11 @@ interface PluginScoreResult {
   scores: Record<string, number>;
   weights: Record<string, number>;
   findings: string[];
+  judge?: {
+    includeInOverall?: boolean;
+    defaultWeight?: number;
+    weights?: Record<string, number>;
+  };
 }
 ```
 
@@ -145,7 +150,14 @@ export const plugin: EvalPlugin = {
     scores.productivity = Math.min(100, session.fileWrites.length * 10);
     weights.productivity = 0.2;
 
-    return { scores, weights, findings };
+    return {
+      scores,
+      weights,
+      findings,
+      judge: {
+        defaultWeight: 0.1,
+      },
+    };
   },
 
   buildJudgePrompt(taskDescription, workDir) {
@@ -167,6 +179,8 @@ export const plugin: EvalPlugin = {
 ## Put Your Agent on Trial
 
 A trial is a self-contained task that puts the extension to the test. Trials are intended to be resettable: each run should start from a known baseline so you can compare behavior across repeated runs.
+
+Repeated runs are useful for measuring stability on the same task. They help you understand operational variance, but they should not be interpreted as formal statistical significance.
 
 The library itself only assumes one convention:
 
@@ -248,7 +262,7 @@ const scores = scoreSession({
 
 const pluginResult = plugin.scoreSession(result.session, verify);
 const judgeFailure = "reason" in judgeOutcome ? judgeOutcome.reason : undefined;
-const findings = [...pluginResult.findings];
+const findings = [...scores.issues, ...pluginResult.findings];
 if (!verify.passed) findings.push("Verification failed");
 if (result.status !== "completed") findings.push(`Session ended with status: ${result.status}`);
 if (judgeOutcome.ok) findings.push(...judgeOutcome.result.findings);
@@ -287,9 +301,12 @@ Scores come from two sources:
 
 **LLM Judge**
 - Anything returned by `runJudge`
-- Judge scores without an explicit matching weight default to `0.1`
+- Judge scores are kept separate from deterministic metrics
+- Judge scores default to a low `0.1` weight unless your plugin overrides that or excludes them from `overall`
 
-The overall score is the weighted average of every score that has a weight.
+The overall score is the weighted average of deterministic metrics plus any judge metrics you explicitly allow into `overall`.
+
+If the plugin emits invalid scores or weights, `scoreSession()` reports scoring issues so your harness can surface them in findings instead of silently producing a misleading aggregate.
 
 ## Reports And Viewer
 
