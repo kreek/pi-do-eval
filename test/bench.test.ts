@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createBenchReport, printBenchComparison } from "../src/bench.js";
-import { createSuiteReport } from "../src/suites.js";
-import type { EvalReport, SuiteReport } from "../src/types.js";
+import { createBenchReport, printBenchComparison } from "../src/lib/eval/bench.js";
+import { createSuiteReport } from "../src/lib/eval/suites.js";
+import type { EvalReport, SuiteReport } from "../src/lib/eval/types.js";
 
 function makeReport(trial: string, variant: string, overall: number): EvalReport {
   return {

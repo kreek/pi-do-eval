@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { scoreSession } from "../src/scorer.js";
-import type { EvalPlugin, EvalSession, JudgeResult, PluginScoreResult, VerifyResult } from "../src/types.js";
+import { scoreSession } from "../src/lib/eval/scorer.js";
+import type { EvalPlugin, EvalSession, JudgeResult, PluginScoreResult, VerifyResult } from "../src/lib/eval/types.js";
 
 const stubSession: EvalSession = {
   toolCalls: [],

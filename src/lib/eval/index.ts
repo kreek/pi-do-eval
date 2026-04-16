@@ -12,7 +12,6 @@ export {
 export { type LiveOptions, type RunOptions, type RunResult, runEval } from "./runner.js";
 export { buildSandboxedCommand, checkAiJail } from "./sandbox.js";
 export { scoreSession } from "./scorer.js";
-export { EvalServer } from "./server.js";
 export {
   aggregateEpochEntries,
   buildSuiteReportEntry,
@@ -58,6 +57,9 @@ export type {
   SuiteReport,
   SuiteReportEntry,
   SuiteReportSummary,
+  LauncherConfig,
+  LauncherTrial,
+  RunRequest,
   ToolCallRecord,
   VerifyResult,
 } from "./types.js";

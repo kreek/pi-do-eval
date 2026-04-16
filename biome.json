@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!!**/dist", "!!**/runs", "!!**/link-shortener"]
+    "includes": ["**", "!!**/dist", "!!**/runs", "!!**/link-shortener", "!!**/.svelte-kit", "!!**/build"]
   },
   "formatter": {
     "enabled": true,

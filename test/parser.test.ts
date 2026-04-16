@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseSessionLines } from "../src/parser.js";
-import type { EvalPlugin, PluginEvent } from "../src/types.js";
+import { parseSessionLines } from "../src/lib/eval/parser.js";
+import type { EvalPlugin, PluginEvent } from "../src/lib/eval/types.js";
 
 const fixtureDir = path.join(import.meta.dirname, "fixtures");
 

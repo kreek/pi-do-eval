@@ -12,8 +12,8 @@ import {
   loadSuiteReport,
   updateSuiteIndex,
   writeSuiteReport,
-} from "../src/suites.js";
-import type { EvalReport, SuiteReport, SuiteReportEntry } from "../src/types.js";
+} from "../src/lib/eval/suites.js";
+import type { EvalReport, SuiteReport, SuiteReportEntry } from "../src/lib/eval/types.js";
 
 const tempDirs: string[] = [];
 

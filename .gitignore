@@ -3,3 +3,6 @@ runs/
 .DS_Store
 .claude/
 CLAUDE.md
+.svelte-kit/
+build/
+bun.lock

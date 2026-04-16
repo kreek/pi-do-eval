@@ -8,9 +8,9 @@ import {
   printSuiteComparison,
   updateRunIndex,
   writeReport,
-} from "../src/reporter.js";
-import { writeSuiteReport } from "../src/suites.js";
-import type { AggregatedSuiteEntry, EvalReport, SuiteComparison } from "../src/types.js";
+} from "../src/lib/eval/reporter.js";
+import { writeSuiteReport } from "../src/lib/eval/suites.js";
+import type { AggregatedSuiteEntry, EvalReport, SuiteComparison } from "../src/lib/eval/types.js";
 
 function makeReport(overrides?: Partial<EvalReport> & { scores?: Partial<EvalReport["scores"]> }): EvalReport {
   const base: EvalReport = {
@@ -120,7 +120,7 @@ describe("formatMarkdown", () => {
   });
 
   it("omits judge section when no judge scores", () => {
-    const md = formatMarkdown(makeReport({ scores: { deterministic: { quality: 80 }, overall: 80 } }));
+    const md = formatMarkdown(makeReport({ scores: { deterministic: { quality: 80 }, overall: 80, issues: [] } }));
     expect(md).not.toContain("## Judge Scores");
   });
 

@@ -5,7 +5,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { execFileSync } from "node:child_process";
-import { _resetAiJailCache, buildSandboxedCommand, checkAiJail } from "../src/sandbox.js";
+import { _resetAiJailCache, buildSandboxedCommand, checkAiJail } from "../src/lib/eval/sandbox.js";
 
 beforeEach(() => {
   _resetAiJailCache();

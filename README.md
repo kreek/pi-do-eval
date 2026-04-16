@@ -75,7 +75,76 @@ npm run eval -- run --trial example --variant default
 npm run view
 ```
 
+`npm run view` runs `eval view`, which now opens the global viewer and auto-registers the current project.
+
 If you want a real example beyond the scaffold, see the `eval/` directory in [pi-tdd](https://github.com/kreek/pi-tdd/tree/main/eval). The rest of this README explains the lower-level APIs the scaffold uses.
+
+## Viewer
+
+The web UI is now a global multi-project viewer. It keeps a small per-user registry of eval projects and lets you switch between them without restarting the app.
+
+Project resolution follows convention over configuration:
+
+- if you add a Pi extension repo root, `pi-do-eval` looks for `./eval`
+- if you add a direct eval directory, it uses that directory as-is
+- `eval view` from a generated harness auto-adds the current project and selects it
+
+Common commands:
+
+```bash
+pi-do-eval ui
+pi-do-eval ui --project ~/sandbox/pi-tdd
+pi-do-eval project add ~/sandbox/pi-tdd
+pi-do-eval project add ~/sandbox/pi-tdd/eval
+pi-do-eval project list
+pi-do-eval project use ~/sandbox/pi-tdd
+pi-do-eval project remove ~/sandbox/pi-tdd
+```
+
+The project registry is stored at:
+
+- `$PI_DO_EVAL_CONFIG_HOME/pi-do-eval/projects.json` if set
+- otherwise `$XDG_CONFIG_HOME/pi-do-eval/projects.json`
+- otherwise `~/.config/pi-do-eval/projects.json`
+
+### Adding Pi Extension Projects
+
+The usual workflow is:
+
+1. Start from the root of a Pi extension repo.
+2. Run `pi-do-eval init` once to scaffold `eval/`.
+3. Work inside `eval/` to define plugins, trials, and suites.
+4. Add the project to the viewer with either `eval view`, `pi-do-eval ui --project /path/to/repo`, or `pi-do-eval project add /path/to/repo`.
+
+Examples:
+
+```bash
+cd ~/sandbox/pi-tdd
+npx pi-do-eval init
+cd eval
+npm install
+npm run eval -- run --trial example --variant default
+npm run view
+```
+
+For an existing project that already has an `eval/` directory:
+
+```bash
+pi-do-eval project add ~/sandbox/my-pi-extension
+pi-do-eval ui
+```
+
+### Hot Reload
+
+`pi-do-eval ui` and `eval view` run the built production server. For hot reload while working on the viewer itself, run the dev server from a local checkout of this repository:
+
+```bash
+cd /path/to/pi-do-eval
+npm install
+pi-do-eval ui-dev --project ~/sandbox/pi-tdd --port 4242
+```
+
+That starts the SvelteKit/Vite dev server with HMR and selects the target project in the registry before launch.
 
 ## Plugin API
 
@@ -323,18 +392,6 @@ If you follow the scaffolded `eval.ts` pattern, a typical run directory looks li
 | `stderr.txt` | optional | Worker stderr, if you choose to persist it |
 
 `updateRunIndex(runsDir)` writes `runs/index.json`, which the viewer reads.
-
-If you want the same `npm run view` workflow as the scaffold, use this script in your harness package:
-
-```json
-{
-  "scripts": {
-    "view": "ln -sf node_modules/pi-do-eval/src/viewer.html index.html && npx serve -S -l 3333 ."
-  }
-}
-```
-
-That serves the harness root at `http://localhost:3333`, with the viewer at `/` and `runs/index.json` in the location the viewer expects.
 
 ## Live Mode
 

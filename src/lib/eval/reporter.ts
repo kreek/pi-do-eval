@@ -64,11 +64,21 @@ export function updateRunIndex(runsDir: string, emit?: (event: EvalEvent) => voi
     if (fs.existsSync(statusPath)) {
       try {
         const status = JSON.parse(fs.readFileSync(statusPath, "utf-8"));
+        // Detect stale runs: no report.json and no live.json update in the last 5 minutes
+        let runStatus: string = status.status ?? "running";
+        if (runStatus === "running") {
+          const livePath = path.join(dirPath, "live.json");
+          const checkPath = fs.existsSync(livePath) ? livePath : statusPath;
+          const mtime = fs.statSync(checkPath).mtimeMs;
+          if (Date.now() - mtime > 5 * 60 * 1000) {
+            runStatus = "stalled";
+          }
+        }
         entries.push({
           dir,
           trial: status.trial ?? "",
           variant: status.variant ?? "",
-          status: status.status ?? "running",
+          status: runStatus,
           overall: 0,
           durationMs: 0,
           startedAt: status.startedAt ?? "",

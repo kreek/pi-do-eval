@@ -8,16 +8,15 @@ export function packageJson(extensionName: string, piDoEvalRef: string): string 
       description: `Eval suite for ${extensionName}`,
       type: "module",
       scripts: {
-        eval: "tsx eval.ts",
+        eval: "bun eval.ts",
         test: "vitest run",
-        view: "npx pi-do-eval view",
+        view: "bun eval.ts view",
       },
       dependencies: {
         "pi-do-eval": piDoEvalRef,
       },
       devDependencies: {
         "@types/node": "^25.6.0",
-        tsx: "^4.19.0",
         typescript: "^5.7.0",
         vitest: "^3.2.1",
       },
@@ -624,6 +623,18 @@ if (command === "list") {
   printBenchComparison(benchReport);
   writeBenchReport(benchReport, RUNS_DIR);
   updateBenchIndex(RUNS_DIR);
+} else if (command === "view") {
+  const port = process.env.EVAL_PORT || "4242";
+  // Resolve package root: export points to src/lib/eval/index.ts, go up 3 dirs.
+  const piDoEvalDir = path.resolve(import.meta.resolve("pi-do-eval").replace("file://", ""), "../../..");
+  const { spawn } = await import("node:child_process");
+  const cliEntry = path.join(piDoEvalDir, "cli", "index.ts");
+  const preview = spawn("bun", [cliEntry, "ui", "--project", process.cwd(), "--port", port], {
+    cwd: piDoEvalDir,
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  preview.on("exit", (code) => process.exit(code ?? 0));
 } else {
   console.log("Eval suite");
   console.log("");
@@ -634,6 +645,7 @@ if (command === "list") {
   console.log("  eval run-all                             Run all trials and variants");
   console.log("  eval bench <suite>                       Compare latest runs per model");
   console.log("  eval bench <suite> --model X --model Y   Run models then compare");
+  console.log("  eval view                                Start the eval viewer with launcher");
   console.log("");
   console.log("Options:");
   console.log("  --no-judge                  Skip LLM judge (deterministic only)");

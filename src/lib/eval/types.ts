@@ -344,3 +344,32 @@ export interface SandboxOptions {
   extraRoPaths?: string[];
   lockdown?: boolean;
 }
+
+// -- Launcher -----------------------------------------------------------------
+
+export interface LauncherTrial {
+  name: string;
+  description: string;
+  variants: string[];
+}
+
+export interface LauncherConfig {
+  trials: LauncherTrial[];
+  suites: Record<string, Array<{ trial: string; variant: string }>>;
+  models: Array<{ provider?: string; model?: string }>;
+  defaultWorker?: { provider?: string; model?: string };
+  judge?: { provider?: string; model?: string };
+  timeouts?: { workerMs?: number; inactivityMs?: number; judgeMs?: number };
+  epochs?: number;
+  budgets?: BudgetConfig;
+  regressionThreshold?: number;
+}
+
+export interface RunRequest {
+  type: "trial" | "suite" | "bench";
+  trial?: string;
+  variant?: string;
+  suite?: string;
+  model?: string;
+  noJudge?: boolean;
+}
