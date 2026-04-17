@@ -167,12 +167,15 @@ export function evalScript(): string {
   return `import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+  type AgentSnapshot,
+  captureEnvironment,
   compareSuiteReports,
   createBenchReport,
   createSuiteReport,
   defaultVerify,
   type EvalPlugin,
   type EvalReport,
+  generateRunId,
   type JudgeResult,
   listSuiteModels,
   loadLatestSuiteReport,
@@ -263,6 +266,18 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
 
   const plugin = await loadPlugin(config.plugin, config);
 
+  const runId = generateRunId();
+  const agentSnapshot: AgentSnapshot = {
+    ...(opts.worker ? { worker: opts.worker } : {}),
+    ...(opts.judge ? { judge: opts.judge } : {}),
+    ...(opts.timeouts ? { timeouts: opts.timeouts } : {}),
+    ...(evalConfig.budgets ? { budgets: evalConfig.budgets } : {}),
+    ...(opts.totalEpochs !== undefined ? { epochs: opts.totalEpochs } : {}),
+    ...(evalConfig.regressions?.threshold !== undefined
+      ? { regressionThreshold: evalConfig.regressions.threshold }
+      : {}),
+  };
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const runName = \`\${timestamp}-\${trialName}-\${variantName}\`;
   const workDir = path.join(RUNS_DIR, runName, "workdir");
@@ -295,8 +310,10 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
       runDir,
       runsDir: RUNS_DIR,
       meta: {
+        runId,
         trial: trialName,
         variant: variantName,
+        agentSnapshot,
         ...(opts.suite ? { suite: opts.suite, suiteRunId: opts.suiteRunId } : {}),
         ...(opts.epoch ? { epoch: opts.epoch, totalEpochs: opts.totalEpochs } : {}),
       },
@@ -366,6 +383,7 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
 
   const report: EvalReport = {
     meta: {
+      runId,
       trial: trialName,
       variant: variantName,
       workerModel,
@@ -374,6 +392,8 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
       durationMs: session.endTime - session.startTime,
       status: result.status,
       verifyPassed: verify.passed,
+      agentSnapshot,
+      environment: captureEnvironment(),
       ...(opts.suite ? { suite: opts.suite, suiteRunId: opts.suiteRunId } : {}),
       ...(opts.epoch ? { epoch: opts.epoch, totalEpochs: opts.totalEpochs } : {}),
     },

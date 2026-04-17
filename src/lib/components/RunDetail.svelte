@@ -10,6 +10,23 @@
 		| { kind: "file"; timestamp: number; data: FileWriteRecord }
 		| { kind: "plugin"; timestamp: number; data: PluginEvent };
 
+	let agentSnapshot = $derived(report.meta.agentSnapshot ?? null);
+	let environment = $derived(report.meta.environment ?? null);
+
+	function formatModel(m: { provider?: string; model?: string } | undefined): string {
+		if (!m) return "—";
+		if (m.provider && m.model) return `${m.provider}/${m.model}`;
+		return m.model ?? m.provider ?? "—";
+	}
+
+	function formatMs(ms: number | undefined): string {
+		if (ms == null) return "—";
+		if (ms < 1000) return `${ms}ms`;
+		const secs = Math.round(ms / 1000);
+		if (secs < 60) return `${secs}s`;
+		return `${Math.round(secs / 60)}m`;
+	}
+
 	let scoreEntries = $derived(report.scores ? Object.entries(report.scores.deterministic) : []);
 	let judgeEntries = $derived(report.scores?.judge ? Object.entries(report.scores.judge) : []);
 	let overallScore = $derived(report.scores?.overall ?? null);
@@ -97,6 +114,65 @@
 			</dd>
 		</dl>
 	</div>
+
+	<!-- Agent snapshot + environment (collapsible) -->
+	{#if agentSnapshot || environment || report.meta.runId}
+		<details class="bg-background-subtle rounded border border-border-muted mb-6">
+			<summary class="cursor-pointer px-4 py-2 text-xs font-semibold uppercase tracking-wider text-foreground-subtle">
+				Agent Snapshot & Environment
+			</summary>
+			<div class="grid grid-cols-1 gap-4 border-t border-border-muted px-4 py-3 md:grid-cols-2">
+				<div>
+					<h4 class="text-[10px] font-semibold uppercase tracking-wider text-foreground-subtle">Agent</h4>
+					<dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
+						{#if report.meta.runId}
+							<dt class="text-foreground-muted">Run ID</dt>
+							<dd class="font-mono text-[10.5px] text-foreground break-all">{report.meta.runId}</dd>
+						{/if}
+						{#if agentSnapshot?.worker}
+							<dt class="text-foreground-muted">Worker</dt>
+							<dd class="font-mono text-[11px] text-foreground">{formatModel(agentSnapshot.worker)}</dd>
+						{/if}
+						{#if agentSnapshot?.judge}
+							<dt class="text-foreground-muted">Judge</dt>
+							<dd class="font-mono text-[11px] text-foreground">{formatModel(agentSnapshot.judge)}</dd>
+						{/if}
+						{#if agentSnapshot?.timeouts?.workerMs}
+							<dt class="text-foreground-muted">Worker timeout</dt>
+							<dd class="text-foreground">{formatMs(agentSnapshot.timeouts.workerMs)}</dd>
+						{/if}
+						{#if agentSnapshot?.timeouts?.inactivityMs}
+							<dt class="text-foreground-muted">Inactivity timeout</dt>
+							<dd class="text-foreground">{formatMs(agentSnapshot.timeouts.inactivityMs)}</dd>
+						{/if}
+						{#if agentSnapshot?.epochs}
+							<dt class="text-foreground-muted">Epochs</dt>
+							<dd class="text-foreground">{agentSnapshot.epochs}</dd>
+						{/if}
+						{#if agentSnapshot?.regressionThreshold != null}
+							<dt class="text-foreground-muted">Regression threshold</dt>
+							<dd class="text-foreground">{agentSnapshot.regressionThreshold}</dd>
+						{/if}
+					</dl>
+				</div>
+				{#if environment}
+					<div>
+						<h4 class="text-[10px] font-semibold uppercase tracking-wider text-foreground-subtle">Environment</h4>
+						<dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
+							<dt class="text-foreground-muted">Node</dt>
+							<dd class="font-mono text-[11px] text-foreground">{environment.nodeVersion}</dd>
+							<dt class="text-foreground-muted">Platform</dt>
+							<dd class="font-mono text-[11px] text-foreground">{environment.platform}</dd>
+							{#if environment.piVersion}
+								<dt class="text-foreground-muted">Pi</dt>
+								<dd class="font-mono text-[11px] text-foreground">{environment.piVersion}</dd>
+							{/if}
+						</dl>
+					</div>
+				{/if}
+			</div>
+		</details>
+	{/if}
 
 	<!-- Score bars -->
 	{#if report.scores}

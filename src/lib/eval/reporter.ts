@@ -38,7 +38,7 @@ export function updateRunIndex(runsDir: string, emit?: (event: EvalEvent) => voi
     if (fs.existsSync(reportPath)) {
       try {
         const report: EvalReport = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
-        entries.push({
+        const entry: RunIndexEntry = {
           dir,
           trial: report.meta.trial,
           variant: report.meta.variant,
@@ -47,12 +47,16 @@ export function updateRunIndex(runsDir: string, emit?: (event: EvalEvent) => voi
           durationMs: report.meta.durationMs,
           startedAt: report.meta.startedAt,
           workerModel: report.meta.workerModel,
-          judgeModel: report.meta.judgeModel,
-          suite: report.meta.suite,
-          suiteRunId: report.meta.suiteRunId,
-          epoch: report.meta.epoch,
-          totalEpochs: report.meta.totalEpochs,
-        });
+        };
+        if (report.meta.runId) entry.runId = report.meta.runId;
+        if (report.meta.judgeModel) entry.judgeModel = report.meta.judgeModel;
+        if (report.meta.suite) entry.suite = report.meta.suite;
+        if (report.meta.suiteRunId) entry.suiteRunId = report.meta.suiteRunId;
+        if (report.meta.epoch !== undefined) entry.epoch = report.meta.epoch;
+        if (report.meta.totalEpochs !== undefined) entry.totalEpochs = report.meta.totalEpochs;
+        if (report.meta.agentSnapshot) entry.agentSnapshot = report.meta.agentSnapshot;
+        if (report.meta.environment) entry.environment = report.meta.environment;
+        entries.push(entry);
       } catch (err) {
         console.warn(`Skipping corrupt report.json in ${dir}:`, err);
       }
@@ -74,7 +78,7 @@ export function updateRunIndex(runsDir: string, emit?: (event: EvalEvent) => voi
             runStatus = "stalled";
           }
         }
-        entries.push({
+        const entry: RunIndexEntry = {
           dir,
           trial: status.trial ?? "",
           variant: status.variant ?? "",
@@ -83,11 +87,15 @@ export function updateRunIndex(runsDir: string, emit?: (event: EvalEvent) => voi
           durationMs: 0,
           startedAt: status.startedAt ?? "",
           workerModel: status.workerModel ?? "",
-          suite: status.suite,
-          suiteRunId: status.suiteRunId,
-          epoch: status.epoch,
-          totalEpochs: status.totalEpochs,
-        });
+        };
+        if (status.runId) entry.runId = status.runId;
+        if (status.suite) entry.suite = status.suite;
+        if (status.suiteRunId) entry.suiteRunId = status.suiteRunId;
+        if (status.epoch !== undefined) entry.epoch = status.epoch;
+        if (status.totalEpochs !== undefined) entry.totalEpochs = status.totalEpochs;
+        if (status.agentSnapshot) entry.agentSnapshot = status.agentSnapshot;
+        if (status.environment) entry.environment = status.environment;
+        entries.push(entry);
       } catch (err) {
         console.warn(`Skipping corrupt status.json in ${dir}:`, err);
       }

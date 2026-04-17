@@ -209,6 +209,71 @@ describe("updateRunIndex", () => {
       totalEpochs: 3,
     });
   });
+
+  it("propagates runId, agentSnapshot, and environment onto index entries", () => {
+    const runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-runs-"));
+    const runDir = path.join(runsDir, "2026-04-17-run-with-snapshot");
+
+    writeReport(
+      makeReport({
+        meta: {
+          ...makeReport().meta,
+          runId: "11111111-2222-4333-8444-555555555555",
+          agentSnapshot: {
+            worker: { provider: "anthropic", model: "claude-opus-4-7" },
+            judge: { model: "claude-sonnet" },
+            timeouts: { workerMs: 900_000 },
+            epochs: 3,
+            regressionThreshold: 5,
+          },
+          environment: {
+            nodeVersion: "v22.0.0",
+            platform: "darwin",
+            runtime: "node/v22.0.0",
+          },
+        },
+      }),
+      runDir,
+    );
+
+    updateRunIndex(runsDir);
+
+    const entries = JSON.parse(fs.readFileSync(path.join(runsDir, "index.json"), "utf-8")) as Array<{
+      runId?: string;
+      agentSnapshot?: unknown;
+      environment?: unknown;
+    }>;
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.runId).toBe("11111111-2222-4333-8444-555555555555");
+    expect(entries[0]?.agentSnapshot).toMatchObject({
+      worker: { provider: "anthropic", model: "claude-opus-4-7" },
+      epochs: 3,
+    });
+    expect(entries[0]?.environment).toMatchObject({
+      nodeVersion: "v22.0.0",
+      platform: "darwin",
+    });
+  });
+
+  it("omits agentSnapshot/environment/runId when report has none (backward compat)", () => {
+    const runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-runs-"));
+    const runDir = path.join(runsDir, "2026-04-17-legacy-run");
+
+    writeReport(makeReport(), runDir);
+    updateRunIndex(runsDir);
+
+    const entries = JSON.parse(fs.readFileSync(path.join(runsDir, "index.json"), "utf-8")) as Array<{
+      runId?: string;
+      agentSnapshot?: unknown;
+      environment?: unknown;
+    }>;
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).not.toHaveProperty("runId");
+    expect(entries[0]).not.toHaveProperty("agentSnapshot");
+    expect(entries[0]).not.toHaveProperty("environment");
+  });
 });
 
 describe("printAggregatedSummary", () => {

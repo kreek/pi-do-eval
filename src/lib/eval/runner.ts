@@ -1,17 +1,22 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { captureEnvironment } from "./environment.js";
 import { parseSessionLines } from "./parser.js";
 import { updateRunIndex } from "./reporter.js";
 import { assertSandboxAvailable, buildSandboxedCommand } from "./sandbox.js";
-import type { EvalEvent, EvalMeta, EvalPlugin, EvalSession, SandboxOptions } from "./types.js";
+import type { AgentSnapshot, EvalEvent, EvalMeta, EvalPlugin, EvalSession, SandboxOptions } from "./types.js";
 
 export interface LiveOptions {
   runDir: string;
   runsDir: string;
   intervalMs?: number;
-  meta: Pick<EvalMeta, "trial" | "variant" | "suite" | "suiteRunId" | "epoch" | "totalEpochs"> & {
+  meta: Pick<
+    EvalMeta,
+    "trial" | "variant" | "suite" | "suiteRunId" | "epoch" | "totalEpochs" | "runId"
+  > & {
     workerModel?: string;
+    agentSnapshot?: AgentSnapshot;
   };
   emit?: (event: EvalEvent) => void;
 }
@@ -71,11 +76,13 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
 
+  const environment = captureEnvironment();
+
   if (live) {
     fs.mkdirSync(live.runDir, { recursive: true });
     fs.writeFileSync(
       path.join(live.runDir, "status.json"),
-      JSON.stringify({ status: "running", startedAt, ...live.meta }),
+      JSON.stringify({ status: "running", startedAt, environment, ...live.meta }),
     );
     sessionStream = fs.createWriteStream(path.join(live.runDir, "session.jsonl"), { flags: "a" });
     updateRunIndex(live.runsDir, live.emit);
@@ -95,7 +102,13 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
     if (!live) return;
     const session = parseSessionLines(lines, opts.plugin);
     const snapshot = {
-      meta: { ...live.meta, startedAt, status: "running", durationMs: Date.now() - startMs },
+      meta: {
+        ...live.meta,
+        startedAt,
+        status: "running",
+        durationMs: Date.now() - startMs,
+        environment,
+      },
       session: { ...session, rawLines: undefined },
       lastUpdated: Date.now(),
     };

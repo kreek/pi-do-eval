@@ -105,7 +105,24 @@ export interface EvalScores {
 
 export type EvalRunStatus = "completed" | "timeout" | "crashed" | "stalled";
 
+export interface AgentSnapshot {
+  worker?: { provider?: string; model?: string; thinking?: string };
+  judge?: { provider?: string; model?: string; thinking?: string };
+  timeouts?: { workerMs?: number; inactivityMs?: number; judgeMs?: number };
+  budgets?: BudgetConfig;
+  epochs?: number;
+  regressionThreshold?: number;
+}
+
+export interface RunEnvironment {
+  nodeVersion: string;
+  platform: string;
+  runtime?: string;
+  piVersion?: string;
+}
+
 export interface EvalMeta {
+  runId?: string;
   trial: string;
   variant: string;
   workerModel: string;
@@ -118,6 +135,8 @@ export interface EvalMeta {
   suiteRunId?: string;
   epoch?: number;
   totalEpochs?: number;
+  agentSnapshot?: AgentSnapshot;
+  environment?: RunEnvironment;
 }
 
 export interface EvalReport {
@@ -242,6 +261,7 @@ export interface SuiteComparison {
 
 export interface RunIndexEntry {
   dir: string;
+  runId?: string;
   trial: string;
   variant: string;
   status: string;
@@ -254,6 +274,8 @@ export interface RunIndexEntry {
   suiteRunId?: string;
   epoch?: number;
   totalEpochs?: number;
+  agentSnapshot?: AgentSnapshot;
+  environment?: RunEnvironment;
 }
 
 // -- SSE Events ---------------------------------------------------------------

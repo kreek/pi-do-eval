@@ -1,4 +1,5 @@
 export { createBenchReport, printBenchComparison, updateBenchIndex, writeBenchReport } from "./bench.js";
+export { captureEnvironment, generateRunId } from "./environment.js";
 export {
   finalizeJudgeOutcome,
   findBalancedJsonObjects,
@@ -34,6 +35,7 @@ export {
   writeSuiteReport,
 } from "./suites.js";
 export type {
+  AgentSnapshot,
   AggregatedSuiteEntry,
   BenchEntry,
   BenchIndexEntry,
@@ -57,6 +59,7 @@ export type {
   PluginEvent,
   PluginScoreResult,
   RegressionSeverity,
+  RunEnvironment,
   RunIndexEntry,
   RunRequest,
   SandboxOptions,
