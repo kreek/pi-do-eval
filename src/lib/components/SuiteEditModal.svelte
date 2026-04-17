@@ -31,14 +31,62 @@
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 	let nameInput = $state<HTMLInputElement | null>(null);
+	let filter = $state("");
 
 	function keyOf(trial: string, variant: string): string {
 		return `${trial}::${variant}`;
 	}
 
+	let totalVariantCount = $derived(
+		trials.reduce((sum, trial) => sum + trial.variants.length, 0),
+	);
+
+	let sortedTrials = $derived([...trials].sort((a, b) => a.name.localeCompare(b.name)));
+
+	let filteredTrials = $derived.by(() => {
+		const q = filter.trim().toLowerCase();
+		if (!q) return sortedTrials;
+		return sortedTrials.filter((trial) => {
+			if (trial.name.toLowerCase().includes(q)) return true;
+			return trial.variants.some((variant) => variant.toLowerCase().includes(q));
+		});
+	});
+
+	function trialSelectionCount(trial: { name: string; variants: string[] }): number {
+		let count = 0;
+		for (const variant of trial.variants) {
+			if (selected.has(keyOf(trial.name, variant))) count++;
+		}
+		return count;
+	}
+
+	function toggleAllForTrial(trial: { name: string; variants: string[] }) {
+		const next = new Set(selected);
+		const count = trialSelectionCount(trial);
+		if (count === trial.variants.length) {
+			for (const variant of trial.variants) next.delete(keyOf(trial.name, variant));
+		} else {
+			for (const variant of trial.variants) next.add(keyOf(trial.name, variant));
+		}
+		selected = next;
+	}
+
+	function selectAll() {
+		const next = new Set<string>();
+		for (const trial of trials) {
+			for (const variant of trial.variants) next.add(keyOf(trial.name, variant));
+		}
+		selected = next;
+	}
+
+	function clearAll() {
+		selected = new Set();
+	}
+
 	$effect(() => {
 		if (!open) return;
 		error = null;
+		filter = "";
 		if (mode === "edit" && existing) {
 			name = existing.name;
 			description = existing.description ?? "";
@@ -165,31 +213,103 @@
 					</label>
 
 					<div>
-						<div class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-foreground-subtle">
-							Trials / Variants
+						<div class="mb-1.5 flex flex-wrap items-center gap-2">
+							<span class="text-[10px] font-semibold uppercase tracking-wider text-foreground-subtle">
+								Trials / Variants
+							</span>
+							<span class="text-[11px] text-foreground-muted">
+								<span class="font-semibold text-foreground">{selected.size}</span> of {totalVariantCount}
+								variants selected
+							</span>
+							<div class="ml-auto flex items-center gap-1">
+								<button
+									type="button"
+									class="rounded border border-border-default px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted transition-colors hover:border-foreground-subtle hover:text-foreground"
+									onclick={selectAll}
+								>
+									Select all
+								</button>
+								<button
+									type="button"
+									class="rounded border border-border-default px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted transition-colors hover:border-foreground-subtle hover:text-foreground"
+									onclick={clearAll}
+									disabled={selected.size === 0}
+								>
+									Clear
+								</button>
+							</div>
 						</div>
-						<div class="rounded border border-border-default bg-background-muted p-2">
-							{#each trials as trial (trial.name)}
-								<div class="mb-1 last:mb-0">
-									<div class="text-[11px] font-semibold text-foreground">{trial.name}</div>
-									<div class="mt-0.5 flex flex-wrap gap-1">
+						<input
+							bind:value={filter}
+							class="mb-2 w-full rounded border border-border-default bg-background-muted px-2 py-1.5 text-[12px] text-foreground placeholder:text-foreground-subtle"
+							placeholder="Filter trials or variants…"
+							type="search"
+						/>
+						<div class="rounded border border-border-default bg-background">
+							{#each filteredTrials as trial, trialIndex (trial.name)}
+								{@const trialCount = trialSelectionCount(trial)}
+								{@const allSelected = trialCount === trial.variants.length && trial.variants.length > 0}
+								{@const someSelected = trialCount > 0 && !allSelected}
+								<div
+									class="grid grid-cols-[180px_1fr] gap-3 px-2 py-1.5 {trialIndex > 0
+										? 'border-t border-border-muted'
+										: ''}"
+								>
+									<label
+										class="flex min-w-0 cursor-pointer items-start gap-2 py-1 pr-1"
+										title={trial.name}
+									>
+										<input
+											type="checkbox"
+											class="mt-0.5 accent-accent-blue"
+											checked={allSelected}
+											indeterminate={someSelected}
+											onchange={() => toggleAllForTrial(trial)}
+										/>
+										<span class="min-w-0 flex-1">
+											<span
+												class="block truncate text-[12px] font-semibold"
+												class:text-foreground={trialCount > 0}
+												class:text-foreground-muted={trialCount === 0}
+											>
+												{trial.name}
+											</span>
+											<span class="block text-[10.5px] text-foreground-subtle">
+												{trialCount}/{trial.variants.length}
+											</span>
+										</span>
+									</label>
+									<div
+										class="grid gap-1"
+										style="grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));"
+									>
 										{#each trial.variants as variant (variant)}
 											{@const key = keyOf(trial.name, variant)}
+											{@const isSelected = selected.has(key)}
 											<label
-												class="inline-flex items-center gap-1 rounded border border-border-muted bg-background px-2 py-0.5 text-[11px] cursor-pointer"
-												class:border-accent-blue={selected.has(key)}
-												class:text-accent-blue={selected.has(key)}
+												class="flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1 text-[11px] transition-colors"
+												class:border-accent-blue={isSelected}
+												class:bg-accent-blue={isSelected}
+												class:text-background={isSelected}
+												class:border-border-muted={!isSelected}
+												class:text-foreground-muted={!isSelected}
+												class:hover:border-foreground-subtle={!isSelected}
+												class:hover:text-foreground={!isSelected}
 											>
 												<input
 													type="checkbox"
 													class="accent-accent-blue"
-													checked={selected.has(key)}
+													checked={isSelected}
 													onchange={() => toggle(trial.name, variant)}
 												/>
-												{variant}
+												<span class="truncate" title={variant}>{variant}</span>
 											</label>
 										{/each}
 									</div>
+								</div>
+							{:else}
+								<div class="px-3 py-4 text-center text-[11px] text-foreground-muted">
+									No trials match "{filter}"
 								</div>
 							{/each}
 						</div>
