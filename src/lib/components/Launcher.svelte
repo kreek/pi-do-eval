@@ -201,24 +201,16 @@
 </script>
 
 {#if config}
-	<div class="space-y-2">
-		{#if running}
-			<div class="text-[10px] font-bold uppercase tracking-wider text-accent-green">
-				<span class="animate-pulse">Running…</span>
-			</div>
-		{/if}
-
-		<div class="flex gap-1">
+	<div class="flex flex-wrap items-center gap-2">
+		<div class="inline-flex overflow-hidden rounded border border-border-default">
 			{#each ["suite", "trial", "bench"] as type}
 				<button
 					type="button"
-					class="flex-1 text-[10px] font-semibold uppercase tracking-wider py-1 px-2 rounded border transition-colors"
+					class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors"
 					class:bg-accent-blue={runType === type}
 					class:text-background={runType === type}
-					class:border-accent-blue={runType === type}
-					class:border-border-default={runType !== type}
 					class:text-foreground-muted={runType !== type}
-					class:hover:border-foreground-subtle={runType !== type}
+					class:hover:text-foreground={runType !== type}
 					onclick={() => (runType = type as "suite" | "trial" | "bench")}
 				>
 					{type}
@@ -228,16 +220,18 @@
 
 		{#if runType === "trial"}
 			<select
-				class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
+				class="max-w-[160px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[12px] text-foreground"
 				bind:value={selectedTrial}
+				aria-label="Trial"
 			>
 				{#each config.trials as trial (trial.name)}
 					<option value={trial.name}>{trial.name}</option>
 				{/each}
 			</select>
 			<select
-				class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
+				class="max-w-[160px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[12px] text-foreground"
 				bind:value={selectedVariant}
+				aria-label="Variant"
 			>
 				{#each availableVariants as variant (variant)}
 					<option value={variant}>{variant}</option>
@@ -245,8 +239,9 @@
 			</select>
 		{:else}
 			<select
-				class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
+				class="max-w-[180px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[12px] text-foreground"
 				bind:value={selectedSuite}
+				aria-label="Suite"
 			>
 				{#each suiteNames as suite (suite)}
 					<option value={suite}>{suite} ({config.suites[suite]?.length ?? 0})</option>
@@ -255,37 +250,34 @@
 		{/if}
 
 		{#if runType !== "bench"}
-			<label class="block">
-				<span class="block text-[10px] uppercase tracking-wider text-foreground-subtle mb-1">Model</span>
-				<select
-					class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
-					bind:value={selectedModel}
-				>
-					<option value="">{defaultWorkerLabel}</option>
-					{#each modelOptions as model (model)}
-						<option value={model}>{model}</option>
-					{/each}
-				</select>
-			</label>
+			<select
+				class="max-w-[180px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[12px] text-foreground"
+				bind:value={selectedModel}
+				aria-label="Model"
+				title={selectedModel || defaultWorkerLabel}
+			>
+				<option value="">{defaultWorkerLabel}</option>
+				{#each modelOptions as model (model)}
+					<option value={model}>{model}</option>
+				{/each}
+			</select>
 		{:else}
-			<div class="text-[10px] text-foreground-muted">
-				<span class="uppercase tracking-wider text-foreground-subtle">Models:</span>
-				{#if modelOptions.length > 0}
-					{modelOptions.join(", ")}
-				{:else}
-					<span class="text-foreground-subtle">from config</span>
-				{/if}
-			</div>
+			<span
+				class="max-w-[180px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[11px] text-foreground-muted"
+				title={modelOptions.join(", ")}
+			>
+				{modelOptions.length > 0 ? modelOptions.join(", ") : "Models from config"}
+			</span>
 		{/if}
 
-		<label class="flex items-center gap-1.5 text-xs text-foreground-muted cursor-pointer">
+		<label class="flex items-center gap-1 text-[11px] text-foreground-muted" title="Skip the LLM judge step">
 			<input type="checkbox" bind:checked={noJudge} class="accent-accent-blue" />
-			No judge
+			<span class="hidden md:inline">No judge</span>
 		</label>
 
 		<button
 			type="button"
-			class="w-full py-1.5 rounded text-xs font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
+			class="rounded px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
 			class:bg-score-green={!running}
 			class:text-background={!running}
 			class:hover:brightness-110={!running}
@@ -294,11 +286,15 @@
 			disabled={!canRun() || running}
 			onclick={launch}
 		>
-			{running ? "Running..." : "Run"}
+			{#if running}
+				<span class="animate-pulse">Running…</span>
+			{:else}
+				▶ Run
+			{/if}
 		</button>
 
 		{#if error}
-			<p class="text-accent-red text-xs">{error}</p>
+			<span class="text-[11px] text-accent-red">{error}</span>
 		{/if}
 	</div>
 {/if}

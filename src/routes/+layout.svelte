@@ -2,8 +2,7 @@
 	import "../app.css";
 	import { onMount } from "svelte";
 	import TopNav from "$lib/components/TopNav.svelte";
-	import { activeProjectId, loadProjects, projectsLoading } from "../stores/projects.js";
-	import { launcherConfig, loadLauncherConfig } from "../stores/launcher.js";
+	import { loadProjects, projectsLoading } from "../stores/projects.js";
 	import { disconnectSSE } from "../stores/sse.js";
 
 	let { children } = $props();
@@ -11,16 +10,6 @@
 	onMount(() => {
 		void loadProjects();
 		return () => disconnectSSE();
-	});
-
-	// Keep launcher config loaded for the active project so the Run popover is
-	// available from any route (Dashboard, Projects list, etc.), not just from
-	// within /projects/[id]/*.
-	$effect(() => {
-		const projectId = $activeProjectId;
-		if (projectId && !$launcherConfig) {
-			void loadLauncherConfig(projectId);
-		}
 	});
 </script>
 

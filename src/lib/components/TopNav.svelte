@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { page } from "$app/state";
-	import LaunchMenu from "./LaunchMenu.svelte";
 	import { activeProject } from "../../stores/projects.js";
 
 	const links = [
@@ -34,18 +33,15 @@
 			</a>
 		{/each}
 	</nav>
-	<div class="ml-auto flex items-center gap-3">
-		{#if $activeProject}
-			<div class="flex items-center gap-2 text-[11px] text-foreground-muted">
-				<span class="uppercase tracking-wider text-foreground-subtle">Project</span>
-				<a
-					href="/projects/{$activeProject.id}/runs"
-					class="font-semibold text-foreground hover:underline"
-				>
-					{$activeProject.name}
-				</a>
-			</div>
-		{/if}
-		<LaunchMenu />
-	</div>
+	{#if $activeProject}
+		<div class="ml-auto flex items-center gap-2 text-[11px] text-foreground-muted">
+			<span class="uppercase tracking-wider text-foreground-subtle">Project</span>
+			<a
+				href="/projects/{$activeProject.id}/runs"
+				class="font-semibold text-foreground hover:underline"
+			>
+				{$activeProject.name}
+			</a>
+		</div>
+	{/if}
 </header>
