@@ -215,7 +215,15 @@
 					{@const delta = prev ? Math.round((entry.averageOverall - prev.averageOverall) * 10) / 10 : null}
 					<tr
 						class="border-t border-border-muted hover:bg-background-muted cursor-pointer transition-colors"
+						role="button"
+						tabindex="0"
 						onclick={() => selectSuiteRun(suiteName, entry.suiteRunId)}
+						onkeydown={(event) => {
+							if (event.key === "Enter" || event.key === " ") {
+								event.preventDefault();
+								selectSuiteRun(suiteName, entry.suiteRunId);
+							}
+						}}
 					>
 						<td class="py-2 pr-4 text-foreground-muted">{formatDate(entry.completedAt)}</td>
 						<td class="py-2 px-2 text-center">

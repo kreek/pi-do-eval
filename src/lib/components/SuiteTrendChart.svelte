@@ -41,6 +41,7 @@
 	const MARGIN_LEFT = 44;
 	const INNER_WIDTH = WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
 	const INNER_HEIGHT = HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
+	const TOOLTIP_FLIP_THRESHOLD_Y = MARGIN_TOP + 112;
 	const TRIAL_COLORS = [
 		"var(--color-accent-green)",
 		"var(--color-accent-orange)",
@@ -148,6 +149,11 @@
 		return plottedPoints.find((point) => point.suiteRunId === hoveredSuiteRunId) ?? plottedPoints[plottedPoints.length - 1];
 	});
 
+	let hoverTooltipPlacement = $derived.by(() => {
+		if (!hoverPoint) return "above" as const;
+		return hoverPoint.y <= TOOLTIP_FLIP_THRESHOLD_Y ? ("below" as const) : ("above" as const);
+	});
+
 	let trendSummary = $derived.by(() => {
 		let improved = 0;
 		let regressed = 0;
@@ -205,6 +211,24 @@
 			parts.push(`${point.comparison.driftCount} drift`);
 		}
 		return parts.length > 0 ? parts.join(", ") : null;
+	}
+
+	function tooltipLeftPercent(x: number): number {
+		return Math.max(10, Math.min(90, (x / WIDTH) * 100));
+	}
+
+	function tooltipTopPercent(y: number, placement: "above" | "below"): number {
+		const yPercent = (y / HEIGHT) * 100;
+		if (placement === "below") {
+			return Math.max(8, Math.min(72, yPercent + 3));
+		}
+		return Math.max(22, Math.min(84, yPercent - 4));
+	}
+
+	function tooltipTransform(placement: "above" | "below"): string {
+		return placement === "below"
+			? "translate(-50%, 0.65rem)"
+			: "translate(-50%, calc(-100% - 0.5rem))";
 	}
 </script>
 
@@ -360,11 +384,11 @@
 			</svg>
 		</div>
 
-		{#if hoverPoint}
-			<div
-				class="pointer-events-none absolute min-w-[14rem] max-w-[18rem] -translate-x-1/2 -translate-y-full rounded-lg border border-border-default bg-background px-3 py-2 shadow-[0_14px_40px_rgba(0,0,0,0.28)]"
-				style={`left:${Math.max(10, Math.min(90, (hoverPoint.x / WIDTH) * 100))}%; top:${Math.max(22, Math.min(84, (hoverPoint.y / HEIGHT) * 100 - 4))}%`}
-			>
+			{#if hoverPoint}
+				<div
+					class="pointer-events-none absolute min-w-[14rem] max-w-[18rem] rounded-lg border border-border-default bg-background px-3 py-2 shadow-[0_14px_40px_rgba(0,0,0,0.28)]"
+					style={`left:${tooltipLeftPercent(hoverPoint.x)}%; top:${tooltipTopPercent(hoverPoint.y, hoverTooltipPlacement)}%; transform:${tooltipTransform(hoverTooltipPlacement)};`}
+				>
 				<div class="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.16em] text-foreground-subtle">
 					<span>{hoverPoint.tooltipLabel}</span>
 					<span style={`color:${pointStroke(hoverPoint)}`}>{deltaLabel(hoverPoint.delta)}</span>

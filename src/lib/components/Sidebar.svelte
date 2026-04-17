@@ -21,18 +21,20 @@
 </script>
 
 <nav class="flex flex-col h-full overflow-y-auto bg-background-subtle border-r border-border-default">
-	<div class="px-4 py-3 border-b border-border-default">
+	<div class="px-5 py-3 border-b border-border-default">
 		<h1 class="text-[14.5px] font-bold tracking-wide">Pi, do Eval</h1>
 	</div>
 
 	<ProjectSwitcher />
 
-	<Launcher />
+	{#key $activeProject?.id ?? "no-project"}
+		<Launcher />
+	{/key}
 
 	{#if !$activeProject}
-		<div class="p-4 text-[12.75px] text-foreground-muted">Add a project to start browsing eval runs.</div>
+		<div class="px-5 py-4 text-[12.75px] text-foreground-muted">Add a project to start browsing eval runs.</div>
 	{:else if $sidebarItems.length === 0 && $benchIndex.length === 0}
-		<div class="p-4 text-[12.75px] text-foreground-muted">No suite runs yet.</div>
+		<div class="px-5 py-4 text-[12.75px] text-foreground-muted">No suite runs yet.</div>
 	{/if}
 
 	<div class="flex-1 overflow-y-auto">
@@ -40,7 +42,7 @@
 			<div class="border-b border-border-muted">
 				<!-- Suite name row -->
 				<div
-					class="flex items-center gap-1 px-2 py-1.5 hover:bg-background-muted transition-colors"
+					class="flex items-center gap-1 px-3 py-1.5 hover:bg-background-muted transition-colors"
 					class:border-l-2={$selectedSuiteName === suite.suite && !$selectedSuiteRunId}
 					class:border-l-accent-blue={$selectedSuiteName === suite.suite && !$selectedSuiteRunId}
 				>
@@ -85,7 +87,7 @@
 						<div>
 							<!-- Suite run row -->
 							<div
-								class="flex items-center gap-1 pl-5 pr-2 py-1 hover:bg-background-muted transition-colors"
+								class="flex items-center gap-1 pl-6 pr-3 py-1 hover:bg-background-muted transition-colors"
 								class:border-l-2={$selectedSuiteRunId === sr.suiteRunId}
 								class:border-l-accent-blue={$selectedSuiteRunId === sr.suiteRunId}
 							>
@@ -123,13 +125,15 @@
 
 							<!-- Individual runs (collapsible) -->
 							{#if $expandedRuns.has(sr.suiteRunId)}
-								<div class="pl-8">
-									{#each sr.children as run (run.dir)}
-										<button
-											class="w-full flex items-center gap-1.5 border-l border-border-muted pl-4 pr-3 py-1 text-left text-[11px] transition-colors hover:bg-background-muted"
-											class:bg-background-muted={$selectedRunDir === run.dir}
-											onclick={() => selectRun(run.dir)}
-										>
+									<div class="pl-9">
+										{#each sr.children as run (run.dir)}
+											<button
+												class="w-full flex items-center gap-1.5 border-l border-border-muted pl-5 pr-4 py-1 text-left text-[11px] transition-colors hover:bg-background-muted"
+												class:border-l-2={$selectedRunDir === run.dir}
+												class:border-l-accent-blue={$selectedRunDir === run.dir}
+												class:bg-background-muted={$selectedRunDir === run.dir}
+												onclick={() => selectRun(run.dir)}
+											>
 											<span class="text-foreground">{run.trial}/{run.variant}</span>
 											{#if run.status === "running"}
 												<span class="text-accent-green text-[10.5px] font-bold animate-pulse">LIVE</span>
@@ -159,13 +163,13 @@
 
 	<!-- Benchmarks section -->
 	{#if $benchIndex.length > 0}
-		<div class="border-t border-border-default">
-			<div class="px-3 py-2 text-[10.5px] font-semibold tracking-wider uppercase text-foreground-subtle">
-				Benchmarks
-			</div>
-			{#each $benchIndex as bench (bench.benchRunId)}
-				<button
-					class="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-background-muted"
+			<div class="border-t border-border-default">
+				<div class="px-4 py-2 text-[10.5px] font-semibold tracking-wider uppercase text-foreground-subtle">
+					Benchmarks
+				</div>
+				{#each $benchIndex as bench (bench.benchRunId)}
+					<button
+						class="w-full flex items-center gap-1.5 px-4 py-1.5 text-left text-[11px] transition-colors hover:bg-background-muted"
 					class:border-l-2={$selectedBenchId === bench.benchRunId}
 					class:border-l-accent-blue={$selectedBenchId === bench.benchRunId}
 					onclick={() => selectBench(bench.benchRunId)}

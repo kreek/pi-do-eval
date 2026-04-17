@@ -6,6 +6,7 @@
 	import { clearPendingLaunch } from "../../stores/selection.js";
 	import { setAutoSelect } from "../../stores/sse.js";
 	import { activeProjectId, projectApiPath } from "../../stores/projects.js";
+	import { normalizeLauncherSelection } from "./launcher-state.js";
 
 	let config = $derived($launcherConfig);
 	let open = $state(true);
@@ -18,6 +19,7 @@
 	let running = $state(false);
 	let error = $state<string | null>(null);
 	let statusPoll = $state<ReturnType<typeof setInterval> | null>(null);
+	let suiteNames = $derived(config ? Object.keys(config.suites) : []);
 
 	let availableVariants = $derived(
 		config?.trials.find((t) => t.name === selectedTrial)?.variants ?? [],
@@ -69,17 +71,14 @@
 
 	$effect(() => {
 		if (!config) return;
-		if (!selectedSuite) {
-			const suites = Object.keys(config.suites);
-			if (suites[0]) selectedSuite = suites[0];
-		}
-		if (!selectedTrial) {
-			const trials = config.trials;
-			if (trials[0]) {
-				selectedTrial = trials[0].name;
-				selectedVariant = trials[0].variants[0] ?? "";
-			}
-		}
+		const normalized = normalizeLauncherSelection(config, {
+			selectedSuite,
+			selectedTrial,
+			selectedVariant,
+		});
+		if (normalized.selectedSuite !== selectedSuite) selectedSuite = normalized.selectedSuite;
+		if (normalized.selectedTrial !== selectedTrial) selectedTrial = normalized.selectedTrial;
+		if (normalized.selectedVariant !== selectedVariant) selectedVariant = normalized.selectedVariant;
 	});
 
 	$effect(() => {
@@ -202,7 +201,8 @@
 {#if config}
 	<div class="border-b border-border-default">
 		<button
-			class="w-full flex items-center gap-1.5 px-3 py-2 text-left"
+			type="button"
+			class="w-full flex items-center gap-1.5 px-4 py-2 text-left"
 			onclick={() => (open = !open)}
 		>
 			<span
@@ -218,11 +218,12 @@
 		</button>
 
 		{#if open}
-			<div class="px-3 pb-3 space-y-2">
+			<div class="px-4 pb-3 space-y-2">
 				<!-- Run type pills -->
 				<div class="flex gap-1">
 					{#each ["suite", "trial", "bench"] as type}
 						<button
+							type="button"
 							class="flex-1 text-[10px] font-semibold uppercase tracking-wider py-1 px-2 rounded border transition-colors"
 							class:bg-accent-blue={runType === type}
 							class:text-background={runType === type}
@@ -243,7 +244,7 @@
 						class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
 						bind:value={selectedTrial}
 					>
-						{#each config.trials as trial}
+						{#each config.trials as trial (trial.name)}
 							<option value={trial.name}>{trial.name}</option>
 						{/each}
 					</select>
@@ -251,7 +252,7 @@
 						class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
 						bind:value={selectedVariant}
 					>
-						{#each availableVariants as variant}
+						{#each availableVariants as variant (variant)}
 							<option value={variant}>{variant}</option>
 						{/each}
 					</select>
@@ -261,7 +262,7 @@
 						class="w-full bg-background-muted border border-border-default rounded px-2 py-1 text-xs text-foreground"
 						bind:value={selectedSuite}
 					>
-						{#each Object.keys(config.suites) as suite}
+						{#each suiteNames as suite (suite)}
 							<option value={suite}>{suite} ({config.suites[suite]?.length ?? 0})</option>
 						{/each}
 					</select>
@@ -277,7 +278,7 @@
 								bind:value={selectedModel}
 							>
 							<option value="">{defaultWorkerLabel}</option>
-							{#each modelOptions as model}
+							{#each modelOptions as model (model)}
 								<option value={model}>{model}</option>
 							{/each}
 						</select>
@@ -302,6 +303,7 @@
 
 				<!-- Run button -->
 				<button
+					type="button"
 					class="w-full py-1.5 rounded text-xs font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
 					class:bg-score-green={!running}
 					class:text-background={!running}
