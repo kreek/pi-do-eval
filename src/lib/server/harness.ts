@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { LauncherConfig } from "$eval/types.js";
+import { loadFileSuites, mergeSuiteSources } from "$eval/suite-files.js";
+import type { LauncherConfig, LauncherSuiteDef } from "$eval/types.js";
 
 interface TrialConfigModule {
   default?: {
@@ -52,15 +53,36 @@ export async function loadLauncherConfigFromEvalDir(evalDir: string): Promise<La
     ...(evalConfig?.runSets ?? {}),
     ...(evalConfig?.suites ?? {}),
   };
+  const fileSuites = loadFileSuites(evalDir);
+  const mergedSuites = mergeSuiteSources(configuredSuites, fileSuites);
+
+  const fileSuiteNames = new Set(fileSuites.map((suite) => suite.name));
+  const suiteDefs: LauncherSuiteDef[] = Object.entries(mergedSuites).map(
+    ([suiteName, entries]) => {
+      const fileSuite = fileSuites.find((suite) => suite.name === suiteName);
+      const source = fileSuiteNames.has(suiteName) ? "file" : "config";
+      return {
+        name: suiteName,
+        ...(fileSuite?.description ? { description: fileSuite.description } : {}),
+        trials: entries,
+        ...(fileSuite?.regressionThreshold !== undefined
+          ? { regressionThreshold: fileSuite.regressionThreshold }
+          : {}),
+        source,
+      };
+    },
+  );
+  suiteDefs.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     trials,
     suites: Object.fromEntries(
-      Object.entries(configuredSuites).map(([suiteName, entries]) => [
+      Object.entries(mergedSuites).map(([suiteName, entries]) => [
         suiteName,
         entries.map((entry) => ({ trial: entry.trial, variant: entry.variant })),
       ]),
     ),
+    suiteDefs,
     models: evalConfig?.models ?? [],
     defaultWorker: evalConfig?.worker,
     judge: evalConfig?.judge,

@@ -378,9 +378,20 @@ export interface LauncherTrial {
   variants: string[];
 }
 
+export type SuiteSource = "file" | "config";
+
+export interface LauncherSuiteDef {
+  name: string;
+  description?: string;
+  trials: Array<{ trial: string; variant: string }>;
+  regressionThreshold?: number;
+  source: SuiteSource;
+}
+
 export interface LauncherConfig {
   trials: LauncherTrial[];
   suites: Record<string, Array<{ trial: string; variant: string }>>;
+  suiteDefs?: LauncherSuiteDef[];
   models: Array<{ provider?: string; model?: string }>;
   defaultWorker?: { provider?: string; model?: string };
   judge?: { provider?: string; model?: string };

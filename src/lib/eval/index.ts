@@ -1,6 +1,13 @@
 export { createBenchReport, printBenchComparison, updateBenchIndex, writeBenchReport } from "./bench.js";
 export { captureEnvironment, generateRunId } from "./environment.js";
 export {
+  deleteFileSuite,
+  loadFileSuites,
+  mergeSuiteSources,
+  type SuiteDefinition,
+  writeFileSuite,
+} from "./suite-files.js";
+export {
   finalizeJudgeOutcome,
   findBalancedJsonObjects,
   type JudgeOptions,
@@ -55,7 +62,9 @@ export type {
   JudgeResult,
   JudgeScoreConfig,
   LauncherConfig,
+  LauncherSuiteDef,
   LauncherTrial,
+  SuiteSource,
   PluginEvent,
   PluginScoreResult,
   RegressionSeverity,
