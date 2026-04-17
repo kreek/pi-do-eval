@@ -18,6 +18,21 @@
 	let editingSuite = $state<LauncherSuiteDef | null>(null);
 	let confirmDelete = $state<string | null>(null);
 
+	function groupVariantsByTrial(
+		entries: Array<{ trial: string; variant: string }>,
+	): Array<{ trial: string; variants: string[] }> {
+		const map = new Map<string, string[]>();
+		for (const entry of entries) {
+			const existing = map.get(entry.trial);
+			if (existing) existing.push(entry.variant);
+			else map.set(entry.trial, [entry.variant]);
+		}
+		return [...map].sort(([a], [b]) => a.localeCompare(b)).map(([trial, variants]) => ({
+			trial,
+			variants: [...variants].sort(),
+		}));
+	}
+
 	let latestBySuite = $derived.by(() => {
 		const map = new Map<string, { averageOverall: number; completedAt: string; prior?: number }>();
 		const bySuite = new Map<string, typeof $suiteIndex>();
@@ -281,11 +296,16 @@
 							</div>
 						</div>
 
-						<div class="mt-3 flex flex-wrap gap-1">
-							{#each suite.trials as entry}
-								<code class="rounded border border-border-muted bg-background-muted px-1.5 py-0.5 text-[11px]">
-									{entry.trial}/{entry.variant}
-								</code>
+						<div class="mt-3 grid grid-cols-[minmax(140px,auto)_1fr] gap-x-4 gap-y-1 border-t border-border-muted pt-3">
+							{#each groupVariantsByTrial(suite.trials) as row (row.trial)}
+								<div class="font-mono text-[11px] text-foreground-muted">{row.trial}</div>
+								<div class="flex flex-wrap gap-1">
+									{#each row.variants as variant (variant)}
+										<code class="rounded border border-border-muted bg-background-muted px-1.5 py-0.5 text-[11px] text-foreground">
+											{variant}
+										</code>
+									{/each}
+								</div>
 							{/each}
 						</div>
 					</div>
