@@ -36,11 +36,11 @@
 				>
 					<button
 						type="button"
-						class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[12.75px] text-foreground-subtle transition-colors hover:bg-background-subtle"
+						class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[16px] leading-none text-foreground-muted transition-colors hover:bg-background-subtle hover:text-foreground"
 						aria-label={$expandedSuites.has(suite.suite) ? `Collapse ${suite.suite}` : `Expand ${suite.suite}`}
 						onclick={() => toggleSuite(suite.suite)}
 					>
-						<span class="transition-transform" class:rotate-90={$expandedSuites.has(suite.suite)}>&#9656;</span>
+						<span class="inline-block transition-transform" class:rotate-90={$expandedSuites.has(suite.suite)}>▸</span>
 					</button>
 					<button
 						type="button"
@@ -79,11 +79,11 @@
 							>
 								<button
 									type="button"
-									class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[12.75px] text-foreground-subtle transition-colors hover:bg-background-subtle"
+									class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[16px] leading-none text-foreground-muted transition-colors hover:bg-background-subtle hover:text-foreground"
 									aria-label={$expandedRuns.has(sr.suiteRunId) ? `Collapse ${sr.suiteRunId}` : `Expand ${sr.suiteRunId}`}
 									onclick={() => toggleSuiteRun(sr.suiteRunId)}
 								>
-									<span class="transition-transform" class:rotate-90={$expandedRuns.has(sr.suiteRunId)}>&#9656;</span>
+									<span class="inline-block transition-transform" class:rotate-90={$expandedRuns.has(sr.suiteRunId)}>▸</span>
 								</button>
 								<button
 									type="button"
