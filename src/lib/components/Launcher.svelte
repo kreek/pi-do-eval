@@ -201,16 +201,21 @@
 </script>
 
 {#if config}
-	<div class="flex flex-wrap items-center gap-2">
+	<fieldset
+		class="contents"
+		disabled={running}
+		aria-busy={running}
+	>
+	<div class="flex flex-wrap items-center gap-2" class:opacity-60={running}>
 		<div class="inline-flex overflow-hidden rounded border border-border-default">
 			{#each ["suite", "trial", "bench"] as type}
 				<button
 					type="button"
-					class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+					class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed"
 					class:bg-accent-blue={runType === type}
 					class:text-background={runType === type}
 					class:text-foreground-muted={runType !== type}
-					class:hover:text-foreground={runType !== type}
+					class:hover:text-foreground={runType !== type && !running}
 					onclick={() => (runType = type as "suite" | "trial" | "bench")}
 				>
 					{type}
@@ -297,4 +302,5 @@
 			<span class="text-[11px] text-accent-red">{error}</span>
 		{/if}
 	</div>
+	</fieldset>
 {/if}
