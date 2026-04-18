@@ -79,11 +79,11 @@
 							<td class="py-2 pr-4 font-medium">{entry.trial}/{entry.variant}</td>
 							<td class="py-2 px-2 text-center">
 								{#if entry.status !== "completed"}
-									<span class="text-accent-red text-xs">{entry.status}</span>
+									<span class="text-accent-red text-xs" title="Run {entry.status}">{entry.status}</span>
 								{:else if !entry.verifyPassed}
-									<span class="text-accent-red text-xs">fail</span>
+									<span class="text-accent-orange text-xs" title="Run completed but the verify step did not pass">verify failed</span>
 								{:else}
-									<span class="text-accent-green text-xs">pass</span>
+									<span class="text-accent-green text-xs" title="Run completed and verify passed">✓</span>
 								{/if}
 							</td>
 							<td class="py-2 px-2 text-center">

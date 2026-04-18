@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { scoreColor, formatDuration, formatMetricLabel } from "$lib/utils.js";
+	import { scoreColor, formatDate, formatDuration, formatMetricLabel } from "$lib/utils.js";
 	import type { FileWriteRecord, PluginEvent, ToolCallRecord } from "$eval/types.js";
 	import type { RunDetailData } from "../../stores/runs.js";
 
@@ -82,11 +82,26 @@
 </script>
 
 <div class="max-w-[800px]">
-	<h2 class="text-xl font-bold mb-1">
-		<span>{report.meta.trial}</span>
-		<span class="text-foreground-subtle font-normal">/</span>
-		<span>{report.meta.variant}</span>
-	</h2>
+	{#if report.meta.suite}
+		<h2 class="text-xl font-bold mb-1">
+			<span class="text-foreground-subtle font-normal">Suite:</span>
+			<span>{report.meta.suite}</span>
+			<span class="text-foreground-subtle font-normal">· Run</span>
+			<span>{formatDate(report.meta.startedAt)}</span>
+		</h2>
+		<p class="text-sm text-foreground-muted font-mono">
+			{report.meta.trial}/{report.meta.variant}
+		</p>
+	{:else}
+		<h2 class="text-xl font-bold mb-1">
+			<span>{report.meta.trial}</span>
+			<span class="text-foreground-subtle font-normal">/</span>
+			<span>{report.meta.variant}</span>
+		</h2>
+		<p class="text-sm text-foreground-muted">
+			Standalone run · {formatDate(report.meta.startedAt)}
+		</p>
+	{/if}
 
 	<div class="flex flex-wrap gap-4 mb-6 mt-4">
 		<dl class="bg-background-subtle rounded px-4 py-2 border border-border-muted">
