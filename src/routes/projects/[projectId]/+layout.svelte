@@ -2,7 +2,6 @@
 	import { page } from "$app/state";
 	import { goto } from "$app/navigation";
 	import Launcher from "$lib/components/Launcher.svelte";
-	import ProjectTabs from "$lib/components/ProjectTabs.svelte";
 	import {
 		activeProjectId,
 		projects,
@@ -84,8 +83,6 @@
 				<Launcher />
 			</div>
 		</header>
-
-		<ProjectTabs projectId={knownProject.id} />
 
 		<div class="flex-1 overflow-hidden">
 			{@render children()}
