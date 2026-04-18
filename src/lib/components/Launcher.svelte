@@ -207,7 +207,11 @@
 	{#if isRunning}
 		<RunProgress />
 	{:else}
-	<div class="flex flex-wrap items-center gap-2">
+	<div class="launch-bar flex flex-wrap items-center gap-2 rounded-lg border border-accent-blue/40 bg-accent-blue/5 px-3 py-1.5">
+		<span class="text-[10px] font-bold uppercase tracking-widest text-accent-blue">
+			Launch
+		</span>
+
 		<div class="inline-flex overflow-hidden rounded border border-border-default">
 			{#each ["suite", "trial", "bench"] as type}
 				<button
@@ -283,10 +287,10 @@
 
 		<button
 			type="button"
-			class="rounded px-3 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-40"
+			class="run-btn ml-1 flex items-center gap-1.5 rounded px-4 py-1.5 text-[12px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+			class:active={!running && canRun()}
 			class:bg-score-green={!running}
 			class:text-background={!running}
-			class:hover:brightness-110={!running}
 			class:bg-background-muted={running}
 			class:text-foreground-muted={running}
 			disabled={!canRun() || running}
@@ -295,7 +299,8 @@
 			{#if running}
 				<span class="animate-pulse">Running…</span>
 			{:else}
-				▶ Run
+				<span class="text-[14px] leading-none">▶</span>
+				<span>Run</span>
 			{/if}
 		</button>
 
@@ -305,3 +310,33 @@
 	</div>
 	{/if}
 {/if}
+
+<style>
+	.launch-bar {
+		box-shadow: 0 0 0 1px rgba(116, 192, 255, 0.08),
+			inset 0 1px 0 rgba(116, 192, 255, 0.05);
+	}
+
+	.run-btn.active {
+		box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.5),
+			0 0 16px rgba(86, 194, 113, 0.35);
+		animation: run-btn-breathe 2.8s ease-in-out infinite;
+	}
+	.run-btn.active:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.6),
+			0 0 24px rgba(86, 194, 113, 0.55);
+		filter: brightness(1.1);
+	}
+
+	@keyframes run-btn-breathe {
+		0%, 100% {
+			box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.5),
+				0 0 14px rgba(86, 194, 113, 0.3);
+		}
+		50% {
+			box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.65),
+				0 0 22px rgba(86, 194, 113, 0.55);
+		}
+	}
+</style>
