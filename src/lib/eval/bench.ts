@@ -2,7 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJsonWith } from "../contracts/codec.js";
 import { benchReportCodec } from "../contracts/domain.js";
-import type { BenchEntry, BenchIndexEntry, BenchReport, SuiteReport } from "./types.js";
+import type {
+  BenchEntry,
+  BenchIndexEntry,
+  BenchReport,
+  ExecutionProfile,
+  ExecutionProfileSnapshot,
+  SuiteReport,
+} from "./types.js";
 
 const BENCH_DIR_NAME = "bench";
 const BENCH_INDEX_FILE = "index.json";
@@ -15,6 +22,46 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+export interface ProfileSuiteReport {
+  profile: ExecutionProfile | ExecutionProfileSnapshot;
+  report: SuiteReport;
+}
+
+function snapshotProfile(profile: ExecutionProfile | ExecutionProfileSnapshot): ExecutionProfileSnapshot {
+  return {
+    id: profile.id,
+    label: profile.label,
+    factors: profile.factors,
+  };
+}
+
+function modelProfile(model: string): ExecutionProfileSnapshot {
+  const slashIdx = model.indexOf("/");
+  return {
+    id: model,
+    label: model,
+    factors: {
+      ...(slashIdx > 0 ? { provider: model.slice(0, slashIdx), model: model.slice(slashIdx + 1) } : { model }),
+      layers: [],
+    },
+  };
+}
+
+function deltaFromBaseline(
+  values: Record<string, number>,
+  baselineProfileId: string | undefined,
+): Record<string, number> | undefined {
+  if (!baselineProfileId) return undefined;
+  const baseline = values[baselineProfileId];
+  if (baseline === undefined) return undefined;
+  const deltas: Record<string, number> = {};
+  for (const [profileId, value] of Object.entries(values)) {
+    if (profileId === baselineProfileId) continue;
+    deltas[profileId] = roundToTenth(value - baseline);
+  }
+  return Object.keys(deltas).length > 0 ? deltas : undefined;
+}
+
 export function createBenchReport(
   suite: string,
   benchRunId: string,
@@ -22,16 +69,43 @@ export function createBenchReport(
   startedAt: string,
   completedAt = new Date().toISOString(),
 ): BenchReport {
-  const models = [...suiteReports.keys()];
+  return createProfileBenchReport(
+    suite,
+    benchRunId,
+    [...suiteReports].map(([model, report]) => ({ profile: modelProfile(model), report })),
+    startedAt,
+    completedAt,
+  );
+}
+
+export function createProfileBenchReport(
+  suite: string,
+  benchRunId: string,
+  profileReports: ProfileSuiteReport[],
+  startedAt: string,
+  completedAt = new Date().toISOString(),
+  baselineProfileId?: string,
+): BenchReport {
+  const profiles = profileReports.map(({ profile }) => snapshotProfile(profile));
+  const profileIds = profiles.map((profile) => profile.id);
+  const duplicateProfileId = profileIds.find((profileId, index) => profileIds.indexOf(profileId) !== index);
+  if (duplicateProfileId) {
+    throw new Error(`Duplicate profile id "${duplicateProfileId}"`);
+  }
+  if (baselineProfileId && !profileIds.includes(baselineProfileId)) {
+    const available = profileIds.join(", ") || "none";
+    throw new Error(`Unknown baseline profile "${baselineProfileId}". Available profiles: ${available}`);
+  }
+  const models = profileIds;
   const suiteRunIds: Record<string, string> = {};
-  for (const [model, report] of suiteReports) {
-    suiteRunIds[model] = report.suiteRunId;
+  for (const { profile, report } of profileReports) {
+    suiteRunIds[profile.id] = report.suiteRunId;
   }
 
-  // Collect all trial/variant keys across all models
+  // Collect all trial/variant keys across all profiles.
   const allKeys = new Set<string>();
   const keyMeta = new Map<string, { trial: string; variant: string }>();
-  for (const report of suiteReports.values()) {
+  for (const { report } of profileReports) {
     for (const entry of report.entries) {
       const key = suiteEntryKey(entry.trial, entry.variant);
       allKeys.add(key);
@@ -47,22 +121,41 @@ export function createBenchReport(
     const overall: Record<string, number> = {};
     const deterministic: Record<string, Record<string, number>> = {};
 
-    for (const [model, report] of suiteReports) {
+    for (const { profile, report } of profileReports) {
       const match = report.entries.find((e) => suiteEntryKey(e.trial, e.variant) === key);
       if (!match) continue;
-      overall[model] = match.overall;
-      deterministic[model] = { ...match.deterministic };
+      overall[profile.id] = match.overall;
+      deterministic[profile.id] = { ...match.deterministic };
     }
 
-    entries.push({ trial: meta.trial, variant: meta.variant, overall, deterministic });
+    entries.push({
+      trial: meta.trial,
+      variant: meta.variant,
+      overall,
+      deterministic,
+      ...(baselineProfileId ? { deltas: deltaFromBaseline(overall, baselineProfileId) } : {}),
+    });
   }
 
   const averages: Record<string, number> = {};
-  for (const [model, report] of suiteReports) {
-    averages[model] = roundToTenth(report.summary.averageOverall);
+  for (const { profile, report } of profileReports) {
+    averages[profile.id] = roundToTenth(report.summary.averageOverall);
   }
+  const averageDeltas = deltaFromBaseline(averages, baselineProfileId);
 
-  return { suite, benchRunId, startedAt, completedAt, models, suiteRunIds, entries, averages };
+  return {
+    suite,
+    benchRunId,
+    startedAt,
+    completedAt,
+    profiles,
+    ...(baselineProfileId ? { baselineProfileId } : {}),
+    models,
+    suiteRunIds,
+    entries,
+    averages,
+    ...(averageDeltas ? { averageDeltas } : {}),
+  };
 }
 
 export function writeBenchReport(report: BenchReport, runsDir: string): string {
@@ -93,8 +186,11 @@ export function updateBenchIndex(runsDir: string) {
         benchRunId: report.benchRunId,
         dir,
         completedAt: report.completedAt,
+        ...(report.profiles ? { profiles: report.profiles } : {}),
+        ...(report.baselineProfileId ? { baselineProfileId: report.baselineProfileId } : {}),
         models: report.models,
         averages: report.averages,
+        ...(report.averageDeltas ? { averageDeltas: report.averageDeltas } : {}),
       });
     } catch {
       // skip corrupt files
@@ -106,40 +202,48 @@ export function updateBenchIndex(runsDir: string) {
 }
 
 export function printBenchComparison(report: BenchReport) {
-  const { models, entries, averages } = report;
-  if (models.length === 0) return;
+  const profileIds = report.profiles?.map((profile) => profile.id) ?? report.models;
+  const labels = new Map(report.profiles?.map((profile) => [profile.id, profile.label]) ?? []);
+  const { entries, averages } = report;
+  if (profileIds.length === 0) return;
+  const baselineProfileId = report.baselineProfileId;
+  const comparisonProfileId =
+    baselineProfileId && profileIds.length === 2
+      ? profileIds.find((profileId) => profileId !== baselineProfileId)
+      : undefined;
 
-  // Shorten model names for display
-  const shortName = (m: string) => {
-    const parts = m.split("/");
-    return parts[parts.length - 1] ?? m;
+  const shortName = (profileId: string) => {
+    const name = labels.get(profileId) ?? profileId;
+    const parts = name.split("/");
+    return parts[parts.length - 1]?.trim() ?? name;
   };
 
-  const colWidth = Math.max(12, ...models.map((m) => shortName(m).length + 2));
+  const colWidth = Math.max(12, ...profileIds.map((profileId) => shortName(profileId).length + 2));
   const labelWidth = Math.max(20, ...entries.map((e) => `${e.trial}/${e.variant}`.length + 2));
-  const showDelta = models.length >= 2;
+  const showDelta = profileIds.length >= 2;
 
   const pad = (s: string, w: number) => s.padEnd(w);
   const rpad = (s: string, w: number) => s.padStart(w);
 
-  // Header
-  console.log(`\n--- Model Comparison: ${report.suite} ---`);
+  console.log(`\n--- Profile Comparison: ${report.suite} ---`);
   let header = pad("", labelWidth);
-  for (const m of models) header += rpad(shortName(m), colWidth);
+  for (const profileId of profileIds) header += rpad(shortName(profileId), colWidth);
   if (showDelta) header += rpad("delta", colWidth);
   console.log(header);
 
-  // Entries
   for (const entry of entries) {
     const label = `${entry.trial}/${entry.variant}`;
     let line = pad(label, labelWidth);
     const scores: (number | undefined)[] = [];
-    for (const m of models) {
-      const score = entry.overall[m];
+    for (const profileId of profileIds) {
+      const score = entry.overall[profileId];
       scores.push(score);
       line += rpad(score !== undefined ? String(score) : "--", colWidth);
     }
-    if (showDelta && scores.length >= 2) {
+    if (comparisonProfileId && entry.deltas) {
+      const delta = entry.deltas[comparisonProfileId];
+      line += rpad(delta !== undefined ? `${delta > 0 ? "+" : ""}${delta}` : "--", colWidth);
+    } else if (showDelta && scores.length >= 2) {
       const first = scores[0];
       const last = scores[scores.length - 1];
       if (first !== undefined && last !== undefined) {
@@ -152,15 +256,17 @@ export function printBenchComparison(report: BenchReport) {
     console.log(line);
   }
 
-  // Averages
   let avgLine = pad("average", labelWidth);
   const avgValues: (number | undefined)[] = [];
-  for (const m of models) {
-    const avg = averages[m];
+  for (const profileId of profileIds) {
+    const avg = averages[profileId];
     avgValues.push(avg);
     avgLine += rpad(avg !== undefined ? String(avg) : "--", colWidth);
   }
-  if (showDelta && avgValues.length >= 2) {
+  if (comparisonProfileId && report.averageDeltas) {
+    const delta = report.averageDeltas[comparisonProfileId];
+    avgLine += rpad(delta !== undefined ? `${delta > 0 ? "+" : ""}${delta}` : "--", colWidth);
+  } else if (showDelta && avgValues.length >= 2) {
     const first = avgValues[0];
     const last = avgValues[avgValues.length - 1];
     if (first !== undefined && last !== undefined) {

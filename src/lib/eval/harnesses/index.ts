@@ -7,6 +7,16 @@ const harnesses = new Map<string, AgentHarness>([
   [codexHarness.id, codexHarness],
 ]);
 
+export function registerHarness(harness: AgentHarness): () => void {
+  if (harnesses.has(harness.id)) {
+    throw new Error(`Agent harness "${harness.id}" is already registered`);
+  }
+  harnesses.set(harness.id, harness);
+  return () => {
+    if (harnesses.get(harness.id) === harness) harnesses.delete(harness.id);
+  };
+}
+
 export function resolveHarness(id = "pi"): AgentHarness {
   const harness = harnesses.get(id);
   if (!harness) {

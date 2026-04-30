@@ -54,7 +54,7 @@ index.html
 }
 
 export function types(): string {
-  return `import type { AgentRuntimeConfig } from "pi-do-eval";
+  return `import type { AgentRuntimeConfig, ExecutionProfile } from "pi-do-eval";
 
 export interface TestStack {
   language: string;
@@ -95,6 +95,13 @@ export interface SuiteEntry {
   epochs?: number;
 }
 
+export interface ExperimentConfig {
+  suite: string;
+  profiles: string[];
+  baseline?: string;
+  epochs?: number;
+}
+
 export interface BudgetConfig {
   maxInputTokens?: number;
   maxOutputTokens?: number;
@@ -118,6 +125,8 @@ export interface EvalConfig {
   budgets?: BudgetConfig;
   suites?: Record<string, SuiteEntry[]>;
   runSets?: Record<string, SuiteEntry[]>;
+  profiles?: Record<string, ExecutionProfile>;
+  experiments?: Record<string, ExperimentConfig>;
   regressions?: {
     threshold?: number;
   };
@@ -141,6 +150,65 @@ const config: EvalConfig = {
   //   { provider: "anthropic", model: "claude-sonnet-4-5" },
   //   { provider: "openai", model: "gpt-4o" },
   // ],
+  // profiles: {
+  //   codexBaseline: {
+  //     id: "codexBaseline",
+  //     label: "Codex baseline",
+  //     agent: { harness: "codex", provider: "openai", model: "gpt-5.4", codex: { isolateHome: true } },
+  //     factors: { harness: "codex", provider: "openai", model: "gpt-5.4", layers: [] },
+  //   },
+  //   codexWithSkills: {
+  //     id: "codexWithSkills",
+  //     label: "Codex + skills",
+  //     agent: { harness: "codex", provider: "openai", model: "gpt-5.4", codex: { isolateHome: true } },
+  //     factors: {
+  //       harness: "codex",
+  //       provider: "openai",
+  //       model: "gpt-5.4",
+  //       layers: [{ id: "engineering-skills", kind: "skill-library", runtime: "codex" }],
+  //     },
+  //     setup: {
+  //       layers: [
+  //         {
+  //           id: "engineering-skills",
+  //           kind: "skill-library",
+  //           runtime: "codex",
+  //           source: "../path/to/skills",
+  //           mode: "copy",
+  //         },
+  //       ],
+  //     },
+  //   },
+  //   codexWithPlugin: {
+  //     id: "codexWithPlugin",
+  //     label: "Codex + plugin",
+  //     agent: { harness: "codex", provider: "openai", model: "gpt-5.4", codex: { isolateHome: true } },
+  //     factors: {
+  //       harness: "codex",
+  //       provider: "openai",
+  //       model: "gpt-5.4",
+  //       layers: [{ id: "engineering-plugin", kind: "plugin", runtime: "codex" }],
+  //     },
+  //     setup: {
+  //       layers: [
+  //         {
+  //           id: "engineering-plugin",
+  //           kind: "plugin",
+  //           runtime: "codex",
+  //           source: "../path/to/plugin-marketplace",
+  //           mode: "install",
+  //         },
+  //       ],
+  //     },
+  //   },
+  // },
+  // experiments: {
+  //   codexProfileComparison: {
+  //     suite: "small",
+  //     profiles: ["codexBaseline", "codexWithSkills"],
+  //     baseline: "codexBaseline",
+  //   },
+  // },
   timeouts: {
     workerMs: 15 * 60 * 1000,
     inactivityMs: 2 * 60 * 1000,
@@ -174,10 +242,12 @@ import {
   captureEnvironment,
   compareSuiteReports,
   createBenchReport,
+  createProfileBenchReport,
   createSuiteReport,
   defaultVerify,
   type EvalPlugin,
   type EvalReport,
+  type ExecutionProfile,
   generateRunId,
   type JudgeResult,
   listSuiteModels,
@@ -191,6 +261,8 @@ import {
   runEval,
   runJudge,
   scoreSession,
+  type ProfileSetupLayer,
+  type ProfileSuiteReport,
   type SuiteReport,
   updateRunIndex,
   updateSuiteIndex,
@@ -200,7 +272,15 @@ import {
   writeSuiteReport,
 } from "pi-do-eval";
 
-import { type EvalConfig, getStacks, type ModelConfig, type TrialConfig, type VariantConfig } from "./types.js";
+import {
+  type EvalConfig,
+  type ExperimentConfig,
+  getStacks,
+  type ModelConfig,
+  type SuiteEntry,
+  type TrialConfig,
+  type VariantConfig,
+} from "./types.js";
 
 const TRIALS_DIR = path.join(import.meta.dirname, "trials");
 const PLUGINS_DIR = path.join(import.meta.dirname, "plugins");
@@ -246,11 +326,123 @@ function buildPrompt(config: TrialConfig, variant: VariantConfig): string {
   return [\`Implement all user stories in the attached task. @\${config.taskFile}\`, ...stackInstructions, "Do not stop until the task is fully complete."].join(" ");
 }
 
+function safeName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "run";
+}
+
+function profileDisplayName(profile: ExecutionProfile): string {
+  return profile.label || profile.id;
+}
+
+function profileWorkerSnapshot(profile: ExecutionProfile): ModelConfig {
+  const worker: ModelConfig = {};
+  const provider = profile.agent.provider ?? profile.factors.provider;
+  const model = profile.agent.model ?? profile.factors.model;
+  if (provider) worker.provider = provider;
+  if (model) worker.model = model;
+  if (profile.agent.thinking) worker.thinking = profile.agent.thinking;
+  return worker;
+}
+
+function profileRuntimeAgent(profile: ExecutionProfile): ExecutionProfile["agent"] {
+  const pluginMarketplaces =
+    profile.setup?.layers
+      ?.filter((layer) => layer.kind === "plugin" && (layer.mode ?? "install") === "install")
+      .map(resolveMarketplaceLayerSource) ?? [];
+  if (pluginMarketplaces.length === 0) return profile.agent;
+  return {
+    ...profile.agent,
+    codex: {
+      ...profile.agent.codex,
+      pluginMarketplaces: [...(profile.agent.codex?.pluginMarketplaces ?? []), ...pluginMarketplaces],
+    },
+  };
+}
+
+function resolveLayerSource(layer: ProfileSetupLayer): string {
+  if (!layer.source) {
+    throw new Error('Layer "' + layer.id + '" is missing a source path');
+  }
+  const source = path.isAbsolute(layer.source)
+    ? layer.source
+    : path.resolve(import.meta.dirname, layer.source);
+  if (!fs.existsSync(source)) {
+    throw new Error('Layer "' + layer.id + '" source does not exist: ' + source);
+  }
+  return source;
+}
+
+function resolveMarketplaceLayerSource(layer: ProfileSetupLayer): string {
+  if (!layer.source) {
+    throw new Error('Layer "' + layer.id + '" is missing a source path');
+  }
+  if (path.isAbsolute(layer.source) || layer.source.startsWith(".")) {
+    return path.resolve(import.meta.dirname, layer.source);
+  }
+  return layer.source;
+}
+
+function defaultLayerTarget(layer: ProfileSetupLayer): string {
+  if (layer.kind === "skill-library") return path.join(".codex", "skills");
+  throw new Error('Layer "' + layer.id + '" requires target because kind "' + layer.kind + '" has no default');
+}
+
+function resolveLayerTarget(workDir: string, layer: ProfileSetupLayer): string {
+  const target = layer.target ?? defaultLayerTarget(layer);
+  const resolved = path.resolve(workDir, target);
+  const relative = path.relative(workDir, resolved);
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error('Layer "' + layer.id + '" target escapes workDir: ' + target);
+  }
+  return resolved;
+}
+
+function copyLayer(source: string, target: string): void {
+  const stat = fs.statSync(source);
+  if (stat.isDirectory()) {
+    fs.mkdirSync(target, { recursive: true });
+    fs.cpSync(source, target, { recursive: true, force: true });
+    return;
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(source, target);
+}
+
+function symlinkLayer(source: string, target: string): void {
+  if (fs.existsSync(target)) {
+    throw new Error("Cannot symlink layer because target already exists: " + target);
+  }
+  const stat = fs.statSync(source);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.symlinkSync(source, target, stat.isDirectory() ? "dir" : "file");
+}
+
+function prepareProfileWorkDir(profile: ExecutionProfile | undefined, workDir: string): void {
+  const layers = profile?.setup?.layers ?? [];
+  for (const layer of layers) {
+    const mode = layer.mode ?? (layer.kind === "plugin" ? "install" : "copy");
+    if (layer.kind === "plugin" && mode === "install") {
+      const source = resolveMarketplaceLayerSource(layer);
+      console.log("  Layer: " + layer.id + " -> Codex marketplace " + source + " (install)");
+      continue;
+    }
+    if (mode !== "copy" && mode !== "symlink") {
+      throw new Error('Layer "' + layer.id + '" uses unsupported setup mode: ' + mode);
+    }
+    const source = resolveLayerSource(layer);
+    const target = resolveLayerTarget(workDir, layer);
+    if (mode === "copy") copyLayer(source, target);
+    if (mode === "symlink") symlinkLayer(source, target);
+    console.log("  Layer: " + layer.id + " -> " + path.relative(workDir, target) + " (" + mode + ")");
+  }
+}
+
 interface RunTrialOpts {
   noJudge?: boolean;
   worker?: ModelConfig;
   judge?: ModelConfig;
   timeouts?: EvalConfig["timeouts"];
+  profile?: ExecutionProfile;
   suite?: string;
   suiteRunId?: string;
   epoch?: number;
@@ -270,8 +462,10 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
   const plugin = await loadPlugin(config.plugin, config);
 
   const runId = generateRunId();
+  const activeAgent = opts.profile ? profileRuntimeAgent(opts.profile) : variant.agent;
+  const activeWorker = opts.profile ? profileWorkerSnapshot(opts.profile) : opts.worker;
   const agentSnapshot: AgentSnapshot = {
-    ...(opts.worker ? { worker: opts.worker } : {}),
+    ...(activeWorker ? { worker: activeWorker } : {}),
     ...(opts.judge ? { judge: opts.judge } : {}),
     ...(opts.timeouts ? { timeouts: opts.timeouts } : {}),
     ...(evalConfig.budgets ? { budgets: evalConfig.budgets } : {}),
@@ -282,7 +476,13 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
   };
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const runName = \`\${timestamp}-\${trialName}-\${variantName}\`;
+  const runName = [
+    timestamp,
+    safeName(trialName),
+    safeName(variantName),
+    ...(opts.profile ? [safeName(opts.profile.id)] : []),
+    runId,
+  ].join("-");
   const workDir = path.join(RUNS_DIR, runName, "workdir");
   const runDir = path.join(RUNS_DIR, runName);
   fs.mkdirSync(workDir, { recursive: true });
@@ -294,6 +494,7 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
   console.log(\`Running \${trialName}/\${variantName} (\${stackLabel})\${epochLabel}\`);
   console.log(\`  Plugin: \${plugin.name}\`);
   console.log(\`  Work dir: \${workDir}\`);
+  if (opts.profile) console.log("  Profile: " + profileDisplayName(opts.profile));
 
   const prompt = buildPrompt(config, variant);
   const trialDir = path.join(TRIALS_DIR, trialName);
@@ -306,10 +507,11 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
     plugin,
     timeoutMs: opts.timeouts?.workerMs,
     inactivityMs: opts.timeouts?.inactivityMs,
-    provider: opts.worker?.provider,
-    model: opts.worker?.model,
-    thinking: opts.worker?.thinking,
-    agent: variant.agent,
+    provider: activeAgent?.provider ?? opts.worker?.provider,
+    model: activeAgent?.model ?? opts.worker?.model,
+    thinking: activeAgent?.thinking ?? opts.worker?.thinking,
+    agent: activeAgent,
+    prepareWorkDir: opts.profile ? (preparedWorkDir) => prepareProfileWorkDir(opts.profile, preparedWorkDir) : undefined,
     live: {
       runDir,
       runsDir: RUNS_DIR,
@@ -382,7 +584,7 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
 
   const workerModel = session.modelInfo
     ? \`\${session.modelInfo.provider}/\${session.modelInfo.model}\`
-    : (variant.agent?.model ?? opts.worker?.model ?? "default");
+    : (opts.profile?.id ?? activeAgent?.model ?? opts.worker?.model ?? "default");
   const judgeModel = opts.judge?.model ?? "default";
 
   const report: EvalReport = {
@@ -443,6 +645,41 @@ const configuredSuites = {
   ...(evalConfig.suites ?? {}),
 };
 
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
+function getSuiteEntries(suiteName: string): SuiteEntry[] {
+  const entries = configuredSuites[suiteName];
+  if (!entries) {
+    const available = Object.keys(configuredSuites).join(", ");
+    fail('Unknown suite "' + suiteName + '". Available: ' + available);
+  }
+  return entries;
+}
+
+function getExperiment(name: string): ExperimentConfig {
+  const experiment = evalConfig.experiments?.[name];
+  if (!experiment) {
+    const available = Object.keys(evalConfig.experiments ?? {}).join(", ");
+    fail('Unknown experiment "' + name + '". Available: ' + available);
+  }
+  return experiment;
+}
+
+function getProfile(profileId: string): ExecutionProfile {
+  const profile = evalConfig.profiles?.[profileId];
+  if (!profile) {
+    const available = Object.keys(evalConfig.profiles ?? {}).join(", ");
+    fail('Unknown profile "' + profileId + '". Available: ' + available);
+  }
+  if (profile.id !== profileId) {
+    fail('Profile key "' + profileId + '" must match profile.id "' + profile.id + '"');
+  }
+  return profile;
+}
+
 function buildRunOpts(workerOverride?: ModelConfig): RunTrialOpts {
   const worker: ModelConfig = { ...evalConfig.worker, ...workerOverride };
   if (!workerOverride) {
@@ -472,6 +709,22 @@ if (command === "list") {
     for (const [name, entries] of Object.entries(configuredSuites)) {
       const labels = entries.map((e) => \`\${e.trial}/\${e.variant}\`).join(", ");
       console.log(\`  \${name} (\${entries.length}): \${labels}\`);
+    }
+  }
+
+  if (evalConfig.profiles && Object.keys(evalConfig.profiles).length > 0) {
+    console.log("\\nProfiles:");
+    for (const profile of Object.values(evalConfig.profiles)) {
+      const layerCount = profile.factors.layers.length;
+      console.log("  " + profile.id + " [" + profileDisplayName(profile) + "] (" + layerCount + " layers)");
+    }
+  }
+
+  if (evalConfig.experiments && Object.keys(evalConfig.experiments).length > 0) {
+    console.log("\\nExperiments:");
+    for (const [name, experiment] of Object.entries(evalConfig.experiments)) {
+      const baseline = experiment.baseline ? " baseline=" + experiment.baseline : "";
+      console.log("  " + name + " -> " + experiment.suite + " [" + experiment.profiles.join(", ") + "]" + baseline);
     }
   }
 } else if (command === "run") {
@@ -560,6 +813,90 @@ if (command === "list") {
       await runTrial(t, v, buildRunOpts());
     }
   }
+} else if (command === "experiment") {
+  const experimentName = args[1] && !args[1].startsWith("--") ? args[1] : undefined;
+  if (!experimentName) {
+    console.error("Usage: eval experiment <name>");
+    process.exit(1);
+  }
+
+  const experiment = getExperiment(experimentName);
+  const entries = getSuiteEntries(experiment.suite);
+  if (experiment.profiles.length === 0) {
+    fail('Experiment "' + experimentName + '" must list at least one profile');
+  }
+  if (new Set(experiment.profiles).size !== experiment.profiles.length) {
+    fail('Experiment "' + experimentName + '" contains duplicate profile ids');
+  }
+  if (experiment.profiles.length > 1 && !experiment.baseline) {
+    fail('Experiment "' + experimentName + '" must set baseline when comparing multiple profiles');
+  }
+  if (experiment.baseline && !experiment.profiles.includes(experiment.baseline)) {
+    fail('Experiment "' + experimentName + '" baseline must be one of its profiles');
+  }
+
+  const profiles = experiment.profiles.map(getProfile);
+  const globalEpochs = experiment.epochs ?? evalConfig.epochs ?? 1;
+  const benchRunId = "bench-" + Date.now() + "-" + safeName(experimentName);
+  const benchStartedAt = new Date().toISOString();
+  const profileReports: ProfileSuiteReport[] = [];
+
+  for (let pi = 0; pi < profiles.length; pi++) {
+    const profile = profiles[pi]!;
+    console.log("\\n=== Experiment " + experimentName + ": " + profileDisplayName(profile) + " ===\\n");
+
+    const suiteRunId = "suite-" + Date.now() + "-" + safeName(experimentName) + "-" + safeName(profile.id);
+    const allResults: Array<{ report: EvalReport; runDir: string }> = [];
+    let maxEpochs = 1;
+
+    for (const entry of entries) {
+      const epochs = entry.epochs ?? globalEpochs;
+      if (epochs > maxEpochs) maxEpochs = epochs;
+      for (let e = 1; e <= epochs; e++) {
+        const result = await runTrial(entry.trial, entry.variant, {
+          ...buildRunOpts(),
+          profile,
+          suite: experiment.suite,
+          suiteRunId,
+          ...(epochs > 1 ? { epoch: e, totalEpochs: epochs } : {}),
+        });
+        allResults.push(result);
+      }
+    }
+
+    const suiteReport = createSuiteReport(
+      experiment.suite,
+      suiteRunId,
+      allResults,
+      new Date().toISOString(),
+      maxEpochs > 1 ? maxEpochs : undefined,
+      profile.id,
+    );
+
+    writeSuiteReport(suiteReport, RUNS_DIR);
+    updateSuiteIndex(RUNS_DIR);
+
+    if (suiteReport.aggregated) {
+      console.log("\\n--- Aggregated Results [" + profile.id + "] ---");
+      for (const agg of suiteReport.aggregated) {
+        printAggregatedSummary(agg);
+      }
+    }
+
+    profileReports.push({ profile, report: suiteReport });
+  }
+
+  const benchReport = createProfileBenchReport(
+    experiment.suite,
+    benchRunId,
+    profileReports,
+    benchStartedAt,
+    new Date().toISOString(),
+    experiment.baseline,
+  );
+  printBenchComparison(benchReport);
+  writeBenchReport(benchReport, RUNS_DIR);
+  updateBenchIndex(RUNS_DIR);
 } else if (command === "bench") {
   const suiteName = args[1] && !args[1].startsWith("--") ? args[1] : undefined;
   if (!suiteName) {
@@ -667,10 +1004,11 @@ if (command === "list") {
   console.log("Eval suite");
   console.log("");
   console.log("Usage:");
-  console.log("  eval list                                List trials, variants, and suites");
+  console.log("  eval list                                List trials, variants, suites, profiles, and experiments");
   console.log("  eval run <suite>                         Run a named suite from eval.config.ts");
   console.log("  eval run --trial <t> --variant <v>       Run a single trial/variant");
   console.log("  eval run-all                             Run all trials and variants");
+  console.log("  eval experiment <name>                   Run a profile/layer benchmark experiment");
   console.log("  eval bench <suite>                       Compare latest runs per model");
   console.log("  eval bench <suite> --model X --model Y   Run models then compare");
   console.log("  eval view                                Start the eval viewer with launcher");

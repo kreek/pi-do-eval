@@ -24,9 +24,9 @@ Only two parts are truly Pi-specific:
 1. launching the worker session;
 2. parsing Pi JSONL into `EvalSession`.
 
-Codex vs Codex + ABP needs the same framework behavior with a different
-worker runtime. Future targets such as Goose, Droid, or other coding agents
-need the same extension point.
+Codex profile comparisons need the same framework behavior with a different
+worker runtime and optional runtime layers. Future targets such as Goose,
+Droid, or other coding agents need the same extension point.
 
 ## Decision
 
@@ -44,7 +44,7 @@ Everything after session normalization remains shared.
 ## Non-Goals
 
 - Do not fork the scoring/reporting/viewer pipeline per agent.
-- Do not make Codex or ABP concepts part of the generic scoring plugin API.
+- Do not make runtime-specific layer packages part of the generic scoring plugin API.
 - Do not require every agent to expose the same native trace format.
 - Do not block Codex support on making the judge runtime pluggable.
 
@@ -67,47 +67,58 @@ interface AgentHarness {
 }
 ```
 
+Built-in harnesses are registered by default. Additional adapters can be
+registered at process startup with `registerHarness(customHarness)`.
+
 The shared runner should follow this shape:
 
 ```ts
 export async function runEval(opts: RunOptions): Promise<RunResult> {
   const harness = resolveHarness(opts.agent?.harness ?? "pi");
 
-  copyScaffold(opts.trialDir, opts.workDir);
+  try {
+    copyScaffold(opts.trialDir, opts.workDir);
 
-  await harness.prepare?.({ workDir: opts.workDir, agent: opts.agent });
+    await opts.prepareWorkDir?.(opts.workDir);
 
-  const spawnSpec = harness.buildWorkerCommand({
-    workDir: opts.workDir,
-    prompt: opts.prompt,
-    provider: opts.provider,
-    model: opts.model,
-    thinking: opts.thinking,
-    agent: opts.agent,
-  });
+    await harness.prepare?.({ workDir: opts.workDir, agent: opts.agent });
 
-  const raw = await runProcessWithTimeouts(spawnSpec, opts);
+    const spawnSpec = harness.buildWorkerCommand({
+      workDir: opts.workDir,
+      prompt: opts.prompt,
+      provider: opts.provider,
+      model: opts.model,
+      thinking: opts.thinking,
+      agent: opts.agent,
+    });
 
-  const session = harness.ingestWorkerSession({
-    rawLines: raw.stdoutLines,
-    stderr: raw.stderr,
-    plugin: opts.plugin,
-    exitCode: raw.exitCode,
-    startedAt: raw.startedAt,
-    endedAt: raw.endedAt,
-  });
+    const raw = await runProcessWithTimeouts(spawnSpec, opts);
 
-  await harness.cleanup?.({ workDir: opts.workDir, agent: opts.agent });
+    const session = harness.ingestWorkerSession({
+      rawLines: raw.stdoutLines,
+      stderr: raw.stderr,
+      plugin: opts.plugin,
+      exitCode: raw.exitCode,
+      startedAt: raw.startedAt,
+      endedAt: raw.endedAt,
+    });
 
-  return {
-    session,
-    status: raw.status,
-    exitCode: raw.exitCode,
-    stderr: raw.stderr,
-    workDir: opts.workDir,
-  };
+    return {
+      session,
+      status: raw.status,
+      exitCode: raw.exitCode,
+      stderr: raw.stderr,
+      workDir: opts.workDir,
+    };
+  } finally {
+    await harness.cleanup?.({ workDir: opts.workDir, agent: opts.agent });
+  }
 }
 ```
+
+`prepareWorkDir` is a framework hook for profile/layer materialization. It
+runs after the trial scaffold has been copied and before harness preparation,
+file snapshots, or worker launch.
 
 ## Normalized Session Contract
 
@@ -173,12 +184,15 @@ codex exec \
   <prompt>
 ```
 
-The control and ABP variants should use different isolated `CODEX_HOME`
-directories so user configuration does not contaminate the comparison.
+Profile comparisons should use temporary isolated `CODEX_HOME` directories
+outside run/workdir artifacts so user configuration and credentials do not
+contaminate the comparison or leak into captured outputs. An isolated Codex
+home copies only `auth.json` from the configured authenticated source and is
+removed during harness cleanup.
 
-For Codex + ABP, `prepare` can create or update the isolated Codex home with
-the ABP marketplace/plugin configuration. For the control, `prepare` should
-ensure ABP is absent.
+For layered Codex profiles, `prepare` can create an isolated Codex home and
+register profile-specific marketplaces or plugins there. For the baseline,
+`prepare` should keep optional layers absent.
 
 Ingestion:
 
@@ -214,6 +228,7 @@ interface VariantConfig {
     thinking?: string;
     env?: Record<string, string>;
     args?: string[];
+    options?: Record<string, unknown>;
 
     pi?: {
       extensionPath?: string;
@@ -223,6 +238,8 @@ interface VariantConfig {
 
     codex?: {
       home?: string;
+      isolateHome?: boolean;
+      authHome?: string;
       ignoreUserConfig?: boolean;
       pluginMarketplaces?: string[];
       profile?: string;
@@ -233,31 +250,27 @@ interface VariantConfig {
 }
 ```
 
-Example Codex vs Codex + ABP variants:
+Example Codex profile variants:
 
 ```ts
 variants: {
-  codex: {
+  codexBaseline: {
     agent: {
       harness: "codex",
       model: "gpt-5.2",
       codex: {
-        home: ".eval/codex-control",
-        ignoreUserConfig: true,
+        isolateHome: true,
       },
     },
   },
 
-  codexAbp: {
+  codexWithPlugin: {
     agent: {
       harness: "codex",
       model: "gpt-5.2",
       codex: {
-        home: ".eval/codex-abp",
-        ignoreUserConfig: true,
-        pluginMarketplaces: [
-          "/Users/alastair/sandbox/agent-booster-pack/.agents/plugins/marketplace.json",
-        ],
+        isolateHome: true,
+        pluginMarketplaces: ["../path/to/plugin-marketplace"],
       },
     },
   },
@@ -316,7 +329,7 @@ construction, and ingestion.
 4. Add tests proving existing Pi scaffold behavior and reports stay stable.
 5. Add a `codex` harness behind explicit variant configuration.
 6. Add Codex session ingestion and file-write fallback from workdir diff.
-7. Add an example Codex vs Codex + ABP eval suite.
+7. Add generic profile/layer examples to the generated eval scaffold.
 8. Consider renaming the scoring-side `EvalPlugin` concept after the runtime
    harness boundary has settled.
 
@@ -325,8 +338,8 @@ construction, and ingestion.
 - Existing Pi eval harnesses run without config changes.
 - Reports, suite aggregation, regression comparison, and viewer data remain
   unchanged for Pi runs.
-- A Codex control run and Codex + ABP run can execute the same trial and
-  produce comparable `EvalReport` files.
+- Codex profile runs can execute the same trial and produce comparable
+  `EvalReport` files.
 - The only required per-agent code lives under the harness/ingest boundary.
 - Scoring plugins can score sessions from multiple agent harnesses without
   knowing how the worker was launched.

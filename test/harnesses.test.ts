@@ -3,7 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCodexSession } from "../src/lib/eval/harnesses/codex.js";
-import { codexHarness, piHarness, resolveHarness } from "../src/lib/eval/harnesses/index.js";
+import { codexHarness, piHarness, registerHarness, resolveHarness } from "../src/lib/eval/harnesses/index.js";
+import type { AgentHarness } from "../src/lib/eval/harnesses/types.js";
 import type { EvalPlugin } from "../src/lib/eval/types.js";
 
 const scoringPlugin: EvalPlugin = {
@@ -24,6 +25,51 @@ describe("agent harnesses", () => {
   it("resolves Pi as the default harness", () => {
     expect(resolveHarness()).toBe(piHarness);
     expect(resolveHarness("pi")).toBe(piHarness);
+  });
+
+  it("allows callers to register and remove a custom harness", () => {
+    const customHarness: AgentHarness = {
+      id: "custom",
+      buildWorkerCommand(ctx) {
+        return {
+          command: "custom-agent",
+          args: [String(ctx.agent?.options?.mode ?? "default"), ctx.prompt],
+        };
+      },
+      ingestWorkerSession(ctx) {
+        return {
+          toolCalls: [],
+          fileWrites: [],
+          pluginEvents: [],
+          rawLines: ctx.rawLines,
+          startTime: ctx.startedAt,
+          endTime: ctx.endedAt,
+          exitCode: ctx.exitCode,
+          tokenUsage: { input: 0, output: 0 },
+          parseWarnings: 0,
+        };
+      },
+    };
+
+    const unregister = registerHarness(customHarness);
+    try {
+      expect(resolveHarness("custom")).toBe(customHarness);
+      expect(
+        customHarness.buildWorkerCommand({
+          workDir: "/tmp/work",
+          prompt: "Do the task",
+          extensionPath: "/unused.ts",
+          agent: { harness: "custom", options: { mode: "strict" } },
+        }),
+      ).toEqual({ command: "custom-agent", args: ["strict", "Do the task"] });
+    } finally {
+      unregister();
+    }
+    expect(() => resolveHarness("custom")).toThrow(/Unknown agent harness/);
+  });
+
+  it("rejects duplicate harness registrations", () => {
+    expect(() => registerHarness(piHarness)).toThrow(/already registered/);
   });
 
   it("builds the current Pi worker command", () => {
@@ -90,6 +136,27 @@ describe("agent harnesses", () => {
       "Do the task",
     ]);
     expect(spec.env?.CODEX_HOME).toBeUndefined();
+  });
+
+  it("builds an isolated Codex command with an isolated home and ignored user config", () => {
+    const workDir = path.join(os.tmpdir(), "pi-do-eval-work");
+    const spec = codexHarness.buildWorkerCommand({
+      workDir,
+      prompt: "Do the task",
+      extensionPath: "/unused.ts",
+      model: "gpt-5.2",
+      agent: {
+        harness: "codex",
+        codex: {
+          isolateHome: true,
+        },
+      },
+    });
+
+    expect(spec.env?.CODEX_HOME).toContain(path.join(os.tmpdir(), "pi-do-eval-codex-home"));
+    const relativeHome = path.relative(workDir, spec.env?.CODEX_HOME ?? "");
+    expect(relativeHome.startsWith("..") || path.isAbsolute(relativeHome)).toBe(true);
+    expect(spec.args).toContain("--ignore-user-config");
   });
 });
 
@@ -171,6 +238,92 @@ describe("parseCodexSession", () => {
           agent: { harness: "codex", codex: { home: path.join(tmpDir, ".codex-home") } },
         }),
       ).toThrow(/is not authenticated/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("copies only auth into an isolated Codex home", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-codex-"));
+    const authHome = path.join(tmpDir, "source-home");
+    const workDir = path.join(tmpDir, "work");
+    const agent = { harness: "codex" as const, codex: { isolateHome: true, authHome } };
+    try {
+      fs.mkdirSync(authHome, { recursive: true });
+      fs.writeFileSync(path.join(authHome, "auth.json"), "{}");
+      fs.writeFileSync(path.join(authHome, "config.toml"), "model = 'gpt'");
+
+      codexHarness.prepare?.({
+        workDir,
+        agent,
+      });
+
+      const isolatedHome = codexHarness.buildWorkerCommand({
+        workDir,
+        prompt: "Do the task",
+        extensionPath: "/unused.ts",
+        agent,
+      }).env?.CODEX_HOME;
+      if (!isolatedHome) throw new Error("Expected isolated Codex home");
+      expect(path.relative(workDir, isolatedHome).startsWith("..")).toBe(true);
+      expect(fs.existsSync(path.join(isolatedHome, "auth.json"))).toBe(true);
+      expect(fs.existsSync(path.join(isolatedHome, "config.toml"))).toBe(false);
+    } finally {
+      codexHarness.cleanup?.({ workDir, agent });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans up isolated Codex homes", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-codex-"));
+    const authHome = path.join(tmpDir, "source-home");
+    const workDir = path.join(tmpDir, "work");
+    const agent = { harness: "codex" as const, codex: { isolateHome: true, authHome } };
+    try {
+      fs.mkdirSync(authHome, { recursive: true });
+      fs.writeFileSync(path.join(authHome, "auth.json"), "{}");
+
+      codexHarness.prepare?.({ workDir, agent });
+      const isolatedHome = codexHarness.buildWorkerCommand({
+        workDir,
+        prompt: "Do the task",
+        extensionPath: "/unused.ts",
+        agent,
+      }).env?.CODEX_HOME;
+      if (!isolatedHome) throw new Error("Expected isolated Codex home");
+      expect(fs.existsSync(path.join(isolatedHome, "auth.json"))).toBe(true);
+
+      codexHarness.cleanup?.({ workDir, agent });
+      expect(fs.existsSync(isolatedHome)).toBe(false);
+    } finally {
+      codexHarness.cleanup?.({ workDir, agent });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects isolated Codex homes when auth is missing", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-codex-"));
+    try {
+      expect(() =>
+        codexHarness.prepare?.({
+          workDir: path.join(tmpDir, "work"),
+          agent: { harness: "codex", codex: { isolateHome: true, authHome: path.join(tmpDir, "missing-home") } },
+        }),
+      ).toThrow(/missing auth\.json/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects Codex configs that set both explicit and isolated homes", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-codex-"));
+    try {
+      expect(() =>
+        codexHarness.prepare?.({
+          workDir: path.join(tmpDir, "work"),
+          agent: { harness: "codex", codex: { home: path.join(tmpDir, "home"), isolateHome: true } },
+        }),
+      ).toThrow(/cannot both be set/);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

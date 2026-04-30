@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileWritesFromDiff } from "../ingest/diff-file-writes.js";
 import type { EvalSession, PluginEvent, ToolCallRecord } from "../types.js";
@@ -24,13 +26,8 @@ export const codexHarness: AgentHarness = {
   requiresFileSnapshot: true,
 
   prepare(ctx) {
-    const home = ctx.agent?.codex?.home;
-    const codexHome = home ? resolveCodexHome(home) : undefined;
-    if (codexHome && !fs.existsSync(path.join(codexHome, "auth.json"))) {
-      throw new Error(
-        `Codex home ${codexHome} is not authenticated. Run codex login with CODEX_HOME=${codexHome}, or omit codex.home to use the default authenticated Codex home.`,
-      );
-    }
+    const codexHome = resolveEffectiveCodexHome(ctx.workDir, ctx.agent);
+    prepareCodexHome(ctx.workDir, ctx.agent, codexHome);
 
     for (const marketplace of ctx.agent?.codex?.pluginMarketplaces ?? []) {
       const result = spawnSync("codex", ["plugin", "marketplace", "add", normalizeMarketplaceSource(marketplace)], {
@@ -50,6 +47,7 @@ export const codexHarness: AgentHarness = {
   },
 
   buildWorkerCommand(ctx: WorkerCommandContext) {
+    const codexHome = resolveEffectiveCodexHome(ctx.workDir, ctx.agent);
     const args = [
       "--ask-for-approval",
       "never",
@@ -66,11 +64,8 @@ export const codexHarness: AgentHarness = {
     const profile = ctx.agent?.codex?.profile;
     if (model) args.push("--model", model);
     if (profile) args.push("--profile", profile);
-    if (ctx.agent?.codex?.ignoreUserConfig) args.push("--ignore-user-config");
+    if (ctx.agent?.codex?.ignoreUserConfig || ctx.agent?.codex?.isolateHome) args.push("--ignore-user-config");
     args.push(...(ctx.agent?.args ?? []), ...(ctx.agent?.codex?.extraArgs ?? []), ctx.prompt);
-
-    const home = ctx.agent?.codex?.home;
-    const codexHome = home ? resolveCodexHome(home) : undefined;
 
     return {
       command: "codex",
@@ -86,7 +81,56 @@ export const codexHarness: AgentHarness = {
   ingestWorkerSession(ctx) {
     return parseCodexSession(ctx);
   },
+
+  cleanup(ctx) {
+    cleanupCodexHome(ctx.workDir, ctx.agent);
+  },
 };
+
+function resolveEffectiveCodexHome(workDir: string, agent: WorkerCommandContext["agent"]): string | undefined {
+  const home = agent?.codex?.home;
+  const isolateHome = agent?.codex?.isolateHome;
+  if (home && isolateHome) {
+    throw new Error("codex.home and codex.isolateHome cannot both be set");
+  }
+  if (home) return resolveCodexHome(home);
+  if (isolateHome) return isolatedCodexHomeForWorkDir(workDir);
+  return undefined;
+}
+
+function prepareCodexHome(workDir: string, agent: WorkerCommandContext["agent"], codexHome: string | undefined): void {
+  if (!codexHome) return;
+  if (agent?.codex?.home) {
+    if (!fs.existsSync(path.join(codexHome, "auth.json"))) {
+      throw new Error(
+        `Codex home ${codexHome} is not authenticated. Run codex login with CODEX_HOME=${codexHome}, or omit codex.home to use the default authenticated Codex home.`,
+      );
+    }
+    return;
+  }
+
+  if (!agent?.codex?.isolateHome) return;
+  const sourceAuth = path.join(resolveCodexAuthHome(agent), "auth.json");
+  if (!fs.existsSync(sourceAuth)) {
+    throw new Error(
+      `Cannot create isolated Codex home for ${workDir}: missing auth.json at ${sourceAuth}. Set codex.authHome to an authenticated Codex home.`,
+    );
+  }
+  fs.rmSync(codexHome, { recursive: true, force: true });
+  fs.mkdirSync(codexHome, { recursive: true });
+  fs.copyFileSync(sourceAuth, path.join(codexHome, "auth.json"));
+}
+
+function cleanupCodexHome(workDir: string, agent: WorkerCommandContext["agent"]): void {
+  if (!agent?.codex?.isolateHome || agent.codex.home) return;
+  fs.rmSync(isolatedCodexHomeForWorkDir(workDir), { recursive: true, force: true });
+}
+
+function resolveCodexAuthHome(agent: WorkerCommandContext["agent"]): string {
+  if (agent?.codex?.authHome) return resolveCodexHome(agent.codex.authHome);
+  if (process.env.CODEX_HOME) return resolveCodexHome(process.env.CODEX_HOME);
+  return path.join(os.homedir(), ".codex");
+}
 
 export function parseCodexSession(ctx: SessionIngestContext): EvalSession {
   const entries: CodexEvent[] = [];
@@ -173,6 +217,13 @@ function timestampOf(entry: CodexEvent): number | undefined {
 
 function resolveCodexHome(home: string): string {
   return path.resolve(home);
+}
+
+function isolatedCodexHomeForWorkDir(workDir: string): string {
+  const resolvedWorkDir = path.resolve(workDir);
+  const digest = createHash("sha256").update(resolvedWorkDir).digest("hex").slice(0, 16);
+  const basename = path.basename(resolvedWorkDir).replace(/[^a-zA-Z0-9._-]+/g, "-") || "workdir";
+  return path.join(os.tmpdir(), "pi-do-eval-codex-home", `${basename}-${digest}`);
 }
 
 function normalizeMarketplaceSource(source: string): string {

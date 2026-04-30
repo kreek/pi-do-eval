@@ -253,7 +253,8 @@ Repeated runs are useful for measuring stability on the same task. They help you
 
 The library itself only assumes one convention:
 
-- If `trialDir/scaffold/` exists, `runEval` copies those files into `workDir` before spawning Pi.
+- If `trialDir/scaffold/` exists, `runEval` copies those files into `workDir` before spawning the agent.
+- If `prepareWorkDir` is provided, `runEval` calls it after the scaffold copy and before harness preparation, file snapshots, or worker launch. Use it to materialize profile layers such as copied skill libraries.
 
 Think of `trialDir/scaffold/` as that reset point: it is the baseline state that gets copied into the working directory at the start of a run.
 

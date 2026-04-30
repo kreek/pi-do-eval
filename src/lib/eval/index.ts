@@ -1,7 +1,14 @@
-export { createBenchReport, printBenchComparison, updateBenchIndex, writeBenchReport } from "./bench.js";
+export {
+  createBenchReport,
+  createProfileBenchReport,
+  type ProfileSuiteReport,
+  printBenchComparison,
+  updateBenchIndex,
+  writeBenchReport,
+} from "./bench.js";
 export { captureEnvironment, generateRunId } from "./environment.js";
 export type { AgentHarness, AgentRuntimeConfig, SpawnSpec } from "./harnesses/index.js";
-export { codexHarness, piHarness, resolveHarness } from "./harnesses/index.js";
+export { codexHarness, piHarness, registerHarness, resolveHarness } from "./harnesses/index.js";
 export {
   finalizeJudgeOutcome,
   findBalancedJsonObjects,
@@ -60,6 +67,9 @@ export type {
   EvalRunStatus,
   EvalScores,
   EvalSession,
+  ExecutionProfile,
+  ExecutionProfileFactors,
+  ExecutionProfileSnapshot,
   FileWriteRecord,
   JudgeFailureReason,
   JudgeOutcome,
@@ -70,6 +80,9 @@ export type {
   LauncherTrial,
   PluginEvent,
   PluginScoreResult,
+  ProfileLayer,
+  ProfileSetup,
+  ProfileSetupLayer,
   RegressionSeverity,
   RegressionStatus,
   RunEnvironment,

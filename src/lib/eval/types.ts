@@ -1,3 +1,5 @@
+import type { AgentRuntimeConfig } from "./harnesses/types.js";
+
 // -- Session event parsing -----------------------------------------------------
 
 export interface ToolCallRecord {
@@ -338,13 +340,54 @@ export type EvalEvent =
       findings: string[];
     });
 
-// -- Bench (cross-model comparison) -------------------------------------------
+// -- Bench (cross-profile comparison) -----------------------------------------
+
+export interface ProfileLayer {
+  id: string;
+  kind: "plugin" | "skill-library" | "mcp" | "hook" | "config" | "rules" | string;
+  runtime?: "pi" | "codex" | "claude" | string;
+  version?: string;
+  capabilities?: string[];
+}
+
+export interface ProfileSetupLayer extends ProfileLayer {
+  source?: string;
+  mode?: "copy" | "symlink" | "install" | string;
+  target?: string;
+}
+
+export interface ProfileSetup {
+  layers?: ProfileSetupLayer[];
+}
+
+export interface ExecutionProfileFactors {
+  harness?: string;
+  provider?: string;
+  model?: string;
+  layers: ProfileLayer[];
+  [key: string]: unknown;
+}
+
+export interface ExecutionProfile {
+  id: string;
+  label: string;
+  agent: AgentRuntimeConfig;
+  factors: ExecutionProfileFactors;
+  setup?: ProfileSetup;
+}
+
+export interface ExecutionProfileSnapshot {
+  id: string;
+  label: string;
+  factors: ExecutionProfileFactors;
+}
 
 export interface BenchEntry {
   trial: string;
   variant: string;
   overall: Record<string, number>;
   deterministic: Record<string, Record<string, number>>;
+  deltas?: Record<string, number>;
 }
 
 export interface BenchReport {
@@ -352,10 +395,13 @@ export interface BenchReport {
   benchRunId: string;
   startedAt: string;
   completedAt: string;
+  profiles?: ExecutionProfileSnapshot[];
+  baselineProfileId?: string;
   models: string[];
   suiteRunIds: Record<string, string>;
   entries: BenchEntry[];
   averages: Record<string, number>;
+  averageDeltas?: Record<string, number>;
 }
 
 export interface BenchIndexEntry {
@@ -363,8 +409,11 @@ export interface BenchIndexEntry {
   benchRunId: string;
   dir: string;
   completedAt: string;
+  profiles?: ExecutionProfileSnapshot[];
+  baselineProfileId?: string;
   models: string[];
   averages: Record<string, number>;
+  averageDeltas?: Record<string, number>;
 }
 
 // -- Sandbox ------------------------------------------------------------------

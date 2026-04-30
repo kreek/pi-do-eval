@@ -1,6 +1,7 @@
 node_modules/
 runs/
 .DS_Store
+.idea/
 .claude/
 CLAUDE.md
 .svelte-kit/

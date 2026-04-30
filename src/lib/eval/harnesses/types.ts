@@ -13,6 +13,7 @@ export interface AgentRuntimeConfig {
   thinking?: string;
   env?: Record<string, string | undefined>;
   args?: string[];
+  options?: Record<string, unknown>;
   pi?: {
     extensionPath?: string;
     extraArgs?: string[];
@@ -20,6 +21,8 @@ export interface AgentRuntimeConfig {
   };
   codex?: {
     home?: string;
+    isolateHome?: boolean;
+    authHome?: string;
     ignoreUserConfig?: boolean;
     pluginMarketplaces?: string[];
     profile?: string;

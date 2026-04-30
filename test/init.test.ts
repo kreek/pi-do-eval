@@ -60,6 +60,49 @@ describe("runInit", () => {
     mockExit.mockRestore();
   });
 
+  it("scaffolds profile and layer benchmark experiments", async () => {
+    writePkg({
+      name: "my-ext",
+      pi: { extensions: ["./src/index.ts"] },
+    });
+
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit");
+    });
+
+    await runInit(tmpDir);
+
+    const evalDir = path.join(tmpDir, "eval");
+    const typesContent = fs.readFileSync(path.join(evalDir, "types.ts"), "utf-8");
+    expect(typesContent).toContain('import type { AgentRuntimeConfig, ExecutionProfile } from "pi-do-eval";');
+    expect(typesContent).toContain("export interface ExperimentConfig");
+    expect(typesContent).toContain("profiles?: Record<string, ExecutionProfile>;");
+    expect(typesContent).toContain("experiments?: Record<string, ExperimentConfig>;");
+
+    const configContent = fs.readFileSync(path.join(evalDir, "eval.config.ts"), "utf-8");
+    expect(configContent).toContain("codexBaseline");
+    expect(configContent).toContain("codexWithSkills");
+    expect(configContent).toContain("codexWithPlugin");
+    expect(configContent).not.toContain("codexControl");
+    expect(configContent).not.toContain("codexAbp");
+    expect(configContent).toContain("isolateHome: true");
+    expect(configContent).toContain('kind: "skill-library"');
+    expect(configContent).toContain('kind: "plugin"');
+    expect(configContent).toContain('mode: "install"');
+
+    const evalContent = fs.readFileSync(path.join(evalDir, "eval.ts"), "utf-8");
+    expect(evalContent).toContain("createProfileBenchReport");
+    expect(evalContent).toContain("function prepareProfileWorkDir");
+    expect(evalContent).toContain("function profileRuntimeAgent");
+    expect(evalContent).toContain('return path.join(".codex", "skills");');
+    expect(evalContent).toContain("prepareWorkDir: opts.profile");
+    expect(evalContent).toContain('} else if (command === "experiment")');
+    expect(evalContent).toContain("eval experiment <name>");
+    expect(evalContent).toContain("must set baseline when comparing multiple profiles");
+
+    mockExit.mockRestore();
+  });
+
   it("aborts if no package.json exists", async () => {
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit");

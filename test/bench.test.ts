@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createBenchReport, printBenchComparison } from "../src/lib/eval/bench.js";
+import { createBenchReport, createProfileBenchReport, printBenchComparison } from "../src/lib/eval/bench.js";
 import { createSuiteReport } from "../src/lib/eval/suites.js";
-import type { EvalReport, SuiteReport } from "../src/lib/eval/types.js";
+import type { EvalReport, ExecutionProfile, SuiteReport } from "../src/lib/eval/types.js";
 
 function makeReport(trial: string, variant: string, overall: number): EvalReport {
   return {
@@ -65,6 +65,8 @@ describe("createBenchReport", () => {
 
     expect(bench.suite).toBe("small");
     expect(bench.models).toEqual(["anthropic/claude-sonnet", "openai/gpt-4o"]);
+    expect(bench.profiles?.[0]?.factors).toEqual({ provider: "anthropic", model: "claude-sonnet", layers: [] });
+    expect(bench.profiles?.[1]?.factors).toEqual({ provider: "openai", model: "gpt-4o", layers: [] });
     expect(bench.entries).toHaveLength(2);
 
     const todo = bench.entries.find((e) => e.trial === "todo-cli");
@@ -122,6 +124,137 @@ describe("createBenchReport", () => {
   });
 });
 
+describe("createProfileBenchReport", () => {
+  it("rejects an unknown baseline profile", () => {
+    const profile: ExecutionProfile = {
+      id: "codex-baseline",
+      label: "Codex baseline",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: { harness: "codex", model: "gpt-5.2", layers: [] },
+    };
+    const suite = makeSuiteForModel("codex-baseline", [{ trial: "bugfix", variant: "default", overall: 70 }]);
+
+    expect(() =>
+      createProfileBenchReport(
+        "engineering-maturity",
+        "bench-skills",
+        [{ profile, report: suite }],
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:20:00Z",
+        "missing-profile",
+      ),
+    ).toThrow(/Unknown baseline profile "missing-profile"/);
+  });
+
+  it("rejects duplicate profile ids", () => {
+    const firstProfile: ExecutionProfile = {
+      id: "codex-baseline",
+      label: "Codex baseline",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: { harness: "codex", model: "gpt-5.2", layers: [] },
+    };
+    const secondProfile: ExecutionProfile = {
+      id: "codex-baseline",
+      label: "Codex duplicate",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: {
+        harness: "codex",
+        model: "gpt-5.2",
+        layers: [{ kind: "skill-library", id: "engineering-skills" }],
+      },
+    };
+
+    expect(() =>
+      createProfileBenchReport(
+        "engineering-maturity",
+        "bench-skills",
+        [
+          {
+            profile: firstProfile,
+            report: makeSuiteForModel("codex-baseline-a", [{ trial: "bugfix", variant: "default", overall: 70 }]),
+          },
+          {
+            profile: secondProfile,
+            report: makeSuiteForModel("codex-baseline-b", [{ trial: "bugfix", variant: "default", overall: 84 }]),
+          },
+        ],
+        "2026-01-01T00:00:00Z",
+      ),
+    ).toThrow(/Duplicate profile id "codex-baseline"/);
+  });
+
+  it("compares execution profiles with ordered layers and baseline deltas", () => {
+    const controlProfile: ExecutionProfile = {
+      id: "codex-gpt52",
+      label: "Codex / GPT-5.2",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: {
+        harness: "codex",
+        model: "gpt-5.2",
+        layers: [],
+      },
+    };
+    const skillsProfile: ExecutionProfile = {
+      id: "codex-gpt52-skills",
+      label: "Codex / GPT-5.2 / skills",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: {
+        harness: "codex",
+        model: "gpt-5.2",
+        layers: [{ kind: "skill-library", id: "engineering-skills", runtime: "codex", capabilities: ["skills"] }],
+      },
+      setup: {
+        layers: [
+          {
+            kind: "skill-library",
+            id: "engineering-skills",
+            runtime: "codex",
+            mode: "copy",
+            source: "/path/to/skills",
+          },
+        ],
+      },
+    };
+
+    const controlSuite = makeSuiteForModel("codex-gpt52", [{ trial: "bugfix", variant: "default", overall: 70 }]);
+    const skillsSuite = makeSuiteForModel("codex-gpt52-skills", [{ trial: "bugfix", variant: "default", overall: 84 }]);
+
+    const bench = createProfileBenchReport(
+      "engineering-maturity",
+      "bench-skills",
+      [
+        { profile: controlProfile, report: controlSuite },
+        { profile: skillsProfile, report: skillsSuite },
+      ],
+      "2026-01-01T00:00:00Z",
+      "2026-01-01T00:20:00Z",
+      "codex-gpt52",
+    );
+
+    expect(bench.profiles).toEqual([
+      {
+        id: "codex-gpt52",
+        label: "Codex / GPT-5.2",
+        factors: { harness: "codex", model: "gpt-5.2", layers: [] },
+      },
+      {
+        id: "codex-gpt52-skills",
+        label: "Codex / GPT-5.2 / skills",
+        factors: {
+          harness: "codex",
+          model: "gpt-5.2",
+          layers: [{ kind: "skill-library", id: "engineering-skills", runtime: "codex", capabilities: ["skills"] }],
+        },
+      },
+    ]);
+    expect(bench.models).toEqual(["codex-gpt52", "codex-gpt52-skills"]);
+    expect(bench.baselineProfileId).toBe("codex-gpt52");
+    expect(bench.averages).toEqual({ "codex-gpt52": 70, "codex-gpt52-skills": 84 });
+    expect(bench.averageDeltas).toEqual({ "codex-gpt52-skills": 14 });
+    expect(bench.entries[0]?.deltas).toEqual({ "codex-gpt52-skills": 14 });
+  });
+});
+
 describe("printBenchComparison", () => {
   let output: string[];
   const origLog = console.log;
@@ -153,10 +286,50 @@ describe("printBenchComparison", () => {
     );
 
     const lines = captureOutput(bench);
-    expect(lines.some((l) => l.includes("Model Comparison: small"))).toBe(true);
+    expect(lines.some((l) => l.includes("Profile Comparison: small"))).toBe(true);
     expect(lines.some((l) => l.includes("claude-sonnet") && l.includes("gpt-4o"))).toBe(true);
     expect(lines.some((l) => l.includes("todo-cli/ts") && l.includes("82") && l.includes("74"))).toBe(true);
     expect(lines.some((l) => l.includes("+8"))).toBe(true);
+  });
+
+  it("prints baseline deltas as treatment minus baseline", () => {
+    const controlProfile: ExecutionProfile = {
+      id: "codex-gpt52",
+      label: "Codex / GPT-5.2",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: { harness: "codex", model: "gpt-5.2", layers: [] },
+    };
+    const skillsProfile: ExecutionProfile = {
+      id: "codex-gpt52-skills",
+      label: "Codex / GPT-5.2 / skills",
+      agent: { harness: "codex", model: "gpt-5.2" },
+      factors: {
+        harness: "codex",
+        model: "gpt-5.2",
+        layers: [{ kind: "skill-library", id: "engineering-skills" }],
+      },
+    };
+    const bench = createProfileBenchReport(
+      "engineering-maturity",
+      "bench-skills",
+      [
+        {
+          profile: controlProfile,
+          report: makeSuiteForModel("codex-gpt52", [{ trial: "bugfix", variant: "default", overall: 70 }]),
+        },
+        {
+          profile: skillsProfile,
+          report: makeSuiteForModel("codex-gpt52-skills", [{ trial: "bugfix", variant: "default", overall: 84 }]),
+        },
+      ],
+      "2026-01-01T00:00:00Z",
+      "2026-01-01T00:20:00Z",
+      "codex-gpt52",
+    );
+
+    const lines = captureOutput(bench);
+    expect(lines.some((l) => l.includes("bugfix/default") && l.includes("+14"))).toBe(true);
+    expect(lines.some((l) => l.includes("average") && l.includes("+14"))).toBe(true);
   });
 
   it("prints single model without delta column", () => {

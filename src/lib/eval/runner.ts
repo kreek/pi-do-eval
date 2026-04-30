@@ -32,6 +32,7 @@ export interface RunOptions {
   thinking?: string;
   agent?: AgentRuntimeConfig;
   sandbox?: boolean | SandboxOptions;
+  prepareWorkDir?: (workDir: string) => void | Promise<void>;
 }
 
 export interface RunResult {
@@ -50,141 +51,151 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
   const inactivity = opts.inactivityMs ?? DEFAULT_INACTIVITY;
   const harness = resolveHarness(opts.agent?.harness ?? "pi");
 
-  const scaffoldDir = path.join(opts.trialDir, "scaffold");
-  if (fs.existsSync(scaffoldDir)) {
-    copyDirSync(scaffoldDir, opts.workDir);
-  }
-
-  await harness.prepare?.({ workDir: opts.workDir, agent: opts.agent });
-
-  const lines: string[] = [];
-  const beforeFiles = harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined;
-
-  const live = opts.live;
   let liveInterval: ReturnType<typeof setInterval> | undefined;
   let sessionStream: fs.WriteStream | undefined;
 
-  const startedAt = new Date().toISOString();
-  const startMs = Date.now();
-  const environment = captureEnvironment();
+  try {
+    const scaffoldDir = path.join(opts.trialDir, "scaffold");
+    if (fs.existsSync(scaffoldDir)) {
+      copyDirSync(scaffoldDir, opts.workDir);
+    }
 
-  if (live) {
-    fs.mkdirSync(live.runDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(live.runDir, "status.json"),
-      JSON.stringify({ status: "running", startedAt, environment, ...live.meta }),
-    );
-    sessionStream = fs.createWriteStream(path.join(live.runDir, "session.jsonl"), { flags: "a" });
-    updateRunIndex(live.runsDir, live.emit);
-    live.emit?.({
-      type: "run_started",
-      timestamp: Date.now(),
-      dir: path.basename(live.runDir),
-      trial: live.meta.trial,
-      variant: live.meta.variant,
-      suite: live.meta.suite,
-      suiteRunId: live.meta.suiteRunId,
-      workerModel: live.meta.workerModel,
+    await opts.prepareWorkDir?.(opts.workDir);
+    await harness.prepare?.({ workDir: opts.workDir, agent: opts.agent });
+
+    const lines: string[] = [];
+    const beforeFiles = harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined;
+
+    const live = opts.live;
+
+    const startedAt = new Date().toISOString();
+    const startMs = Date.now();
+    const environment = captureEnvironment();
+
+    if (live) {
+      fs.mkdirSync(live.runDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(live.runDir, "status.json"),
+        JSON.stringify({ status: "running", startedAt, environment, ...live.meta }),
+      );
+      sessionStream = fs.createWriteStream(path.join(live.runDir, "session.jsonl"), { flags: "a" });
+      updateRunIndex(live.runsDir, live.emit);
+      live.emit?.({
+        type: "run_started",
+        timestamp: Date.now(),
+        dir: path.basename(live.runDir),
+        trial: live.meta.trial,
+        variant: live.meta.variant,
+        suite: live.meta.suite,
+        suiteRunId: live.meta.suiteRunId,
+        workerModel: live.meta.workerModel,
+      });
+    }
+
+    function ingestSnapshot(exitCode: number | null, endedAt: number): EvalSession {
+      return harness.ingestWorkerSession({
+        rawLines: lines,
+        stderr: "",
+        plugin: opts.plugin,
+        exitCode,
+        status: "completed",
+        startedAt: startMs,
+        endedAt,
+        beforeFiles,
+        afterFiles: harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined,
+      });
+    }
+
+    function writeLiveSnapshot() {
+      if (!live) return;
+      const session = ingestSnapshot(null, Date.now());
+      const snapshot = {
+        meta: {
+          ...live.meta,
+          startedAt,
+          status: "running",
+          durationMs: Date.now() - startMs,
+          environment,
+        },
+        session: { ...session, rawLines: undefined },
+        lastUpdated: Date.now(),
+      };
+      const tmpPath = path.join(live.runDir, "live.json.tmp");
+      fs.writeFileSync(tmpPath, JSON.stringify(snapshot, null, 2));
+      fs.renameSync(tmpPath, path.join(live.runDir, "live.json"));
+      live.emit?.({
+        type: "run_progress",
+        timestamp: Date.now(),
+        dir: path.basename(live.runDir),
+        durationMs: Date.now() - startMs,
+        toolCount: session.toolCalls.length,
+        fileCount: session.fileWrites.length,
+      });
+    }
+
+    const spawnSpec = harness.buildWorkerCommand({
+      workDir: opts.workDir,
+      prompt: opts.prompt,
+      extensionPath: opts.extensionPath,
+      provider: opts.provider,
+      model: opts.model,
+      thinking: opts.thinking,
+      agent: opts.agent,
     });
-  }
 
-  function ingestSnapshot(exitCode: number | null, endedAt: number): EvalSession {
-    return harness.ingestWorkerSession({
+    if (live) {
+      liveInterval = setInterval(writeLiveSnapshot, live.intervalMs ?? 2000);
+    }
+
+    const result = await runProcessWithTimeouts({
+      spawnSpec,
+      workDir: opts.workDir,
+      timeoutMs: timeout,
+      inactivityMs: inactivity,
+      sandbox: opts.sandbox,
+      onStdoutLine(line) {
+        lines.push(line);
+        sessionStream?.write(`${line}\n`);
+      },
+    });
+
+    if (liveInterval) {
+      clearInterval(liveInterval);
+      liveInterval = undefined;
+    }
+    sessionStream?.end();
+    sessionStream = undefined;
+
+    const session = harness.ingestWorkerSession({
       rawLines: lines,
-      stderr: "",
+      stderr: result.stderr,
       plugin: opts.plugin,
-      exitCode,
-      status: "completed",
-      startedAt: startMs,
-      endedAt,
+      exitCode: result.exitCode,
+      status: result.status,
+      startedAt: result.startedAt,
+      endedAt: result.endedAt,
       beforeFiles,
       afterFiles: harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined,
     });
-  }
 
-  function writeLiveSnapshot() {
-    if (!live) return;
-    const session = ingestSnapshot(null, Date.now());
-    const snapshot = {
-      meta: {
-        ...live.meta,
-        startedAt,
-        status: "running",
+    if (live) {
+      writeLiveSnapshot();
+      updateRunIndex(live.runsDir, live.emit);
+      live.emit?.({
+        type: "run_completed",
+        timestamp: Date.now(),
+        dir: path.basename(live.runDir),
+        status: result.status,
         durationMs: Date.now() - startMs,
-        environment,
-      },
-      session: { ...session, rawLines: undefined },
-      lastUpdated: Date.now(),
-    };
-    const tmpPath = path.join(live.runDir, "live.json.tmp");
-    fs.writeFileSync(tmpPath, JSON.stringify(snapshot, null, 2));
-    fs.renameSync(tmpPath, path.join(live.runDir, "live.json"));
-    live.emit?.({
-      type: "run_progress",
-      timestamp: Date.now(),
-      dir: path.basename(live.runDir),
-      durationMs: Date.now() - startMs,
-      toolCount: session.toolCalls.length,
-      fileCount: session.fileWrites.length,
-    });
+      });
+    }
+
+    return { session, status: result.status, exitCode: result.exitCode, stderr: result.stderr, workDir: opts.workDir };
+  } finally {
+    if (liveInterval) clearInterval(liveInterval);
+    sessionStream?.end();
+    await harness.cleanup?.({ workDir: opts.workDir, agent: opts.agent });
   }
-
-  const spawnSpec = harness.buildWorkerCommand({
-    workDir: opts.workDir,
-    prompt: opts.prompt,
-    extensionPath: opts.extensionPath,
-    provider: opts.provider,
-    model: opts.model,
-    thinking: opts.thinking,
-    agent: opts.agent,
-  });
-
-  if (live) {
-    liveInterval = setInterval(writeLiveSnapshot, live.intervalMs ?? 2000);
-  }
-
-  const result = await runProcessWithTimeouts({
-    spawnSpec,
-    workDir: opts.workDir,
-    timeoutMs: timeout,
-    inactivityMs: inactivity,
-    sandbox: opts.sandbox,
-    onStdoutLine(line) {
-      lines.push(line);
-      sessionStream?.write(`${line}\n`);
-    },
-  });
-
-  if (liveInterval) clearInterval(liveInterval);
-  sessionStream?.end();
-
-  const session = harness.ingestWorkerSession({
-    rawLines: lines,
-    stderr: result.stderr,
-    plugin: opts.plugin,
-    exitCode: result.exitCode,
-    status: result.status,
-    startedAt: result.startedAt,
-    endedAt: result.endedAt,
-    beforeFiles,
-    afterFiles: harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined,
-  });
-
-  if (live) {
-    writeLiveSnapshot();
-    updateRunIndex(live.runsDir, live.emit);
-    live.emit?.({
-      type: "run_completed",
-      timestamp: Date.now(),
-      dir: path.basename(live.runDir),
-      status: result.status,
-      durationMs: Date.now() - startMs,
-    });
-  }
-
-  await harness.cleanup?.({ workDir: opts.workDir, agent: opts.agent });
-
-  return { session, status: result.status, exitCode: result.exitCode, stderr: result.stderr, workDir: opts.workDir };
 }
 
 function copyDirSync(src: string, dest: string) {
