@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   benchIndexCodec,
+  evalReportCodec,
   partialTrialMetaCodec,
   projectRegistryCodec,
   runRequestCodec,
@@ -91,5 +92,70 @@ describe("contract codecs", () => {
   it("keeps tolerant trial meta loading separate from strict route meta parsing", () => {
     expect(trialMetaCodec.parse({ tags: ["ok", 1], enabled: "yes" }).value).toEqual({ tags: ["ok"] });
     expect(partialTrialMetaCodec.parse({ tags: ["ok", 1] }).ok).toBe(false);
+  });
+
+  it("preserves the report's judgeResult so the run detail UI can render judge reasoning", () => {
+    const baseReport = {
+      meta: {
+        trial: "trial-a",
+        variant: "default",
+        workerModel: "codex",
+        startedAt: "2026-04-30T22:52:08Z",
+        durationMs: 73000,
+        status: "completed",
+        verifyPassed: true,
+        agentSnapshot: { worker: { provider: "openai", model: "gpt-5.4" } },
+        environment: { nodeVersion: "v25", platform: "darwin", runtime: "node/v25" },
+      },
+      scores: { deterministic: { verification: 100 }, overall: 84, issues: [] },
+      session: {
+        toolCalls: [],
+        fileWrites: [],
+        pluginEvents: [],
+        startTime: 0,
+        endTime: 0,
+        tokenUsage: { input: 0, output: 0 },
+        parseWarnings: 0,
+      },
+      findings: [],
+      judgeResult: {
+        scores: { engineering_maturity: 74, simplicity: 91 },
+        reasons: { engineering_maturity: "Scoped change with targeted tests.", simplicity: "Clear control flow." },
+        findings: ["Sparse arrays slip past validation"],
+      },
+    };
+
+    const parsed = evalReportCodec.parse(baseReport);
+    expect(parsed.ok, JSON.stringify(parsed.issues)).toBe(true);
+    expect(parsed.value?.judgeResult).toEqual(baseReport.judgeResult);
+  });
+
+  it("treats reports without a judgeResult as valid (judge is optional)", () => {
+    const parsed = evalReportCodec.parse({
+      meta: {
+        trial: "trial-b",
+        variant: "default",
+        workerModel: "codex",
+        startedAt: "2026-04-30T22:00:00Z",
+        durationMs: 50000,
+        status: "completed",
+        verifyPassed: true,
+        agentSnapshot: { worker: { provider: "openai", model: "gpt-5.4" } },
+        environment: { nodeVersion: "v25", platform: "darwin", runtime: "node/v25" },
+      },
+      scores: { deterministic: { verification: 100 }, overall: 100, issues: [] },
+      session: {
+        toolCalls: [],
+        fileWrites: [],
+        pluginEvents: [],
+        startTime: 0,
+        endTime: 0,
+        tokenUsage: { input: 0, output: 0 },
+        parseWarnings: 0,
+      },
+      findings: [],
+    });
+    expect(parsed.ok).toBe(true);
+    expect(parsed.value?.judgeResult).toBeUndefined();
   });
 });

@@ -10,6 +10,7 @@ import type {
   EvalRunStatus,
   EvalSession,
   ExecutionProfileSnapshot,
+  JudgeResult,
   LauncherConfig,
   LauncherSuiteDef,
   LauncherTrial,
@@ -771,9 +772,40 @@ function parseEvalReport(value: unknown, path: string): ParseResult<EvalReport> 
   if (issues.length > 0) return failIssues(issues);
   const meta = parseEvalMeta(metaObject.value, `${path}.meta`);
   const scores = parseEvalScores(scoresObject.value, `${path}.scores`);
-  const nextIssues = mergeIssues(meta, scores);
+  const judgeResult = parseOptionalJudgeResult(object.value.judgeResult, `${path}.judgeResult`);
+  const nextIssues = mergeIssues(meta, scores, judgeResult);
   if (nextIssues.length > 0) return failIssues(nextIssues);
-  return ok({ meta: meta.value, scores: scores.value, session: session.value, findings: findings.value });
+  return ok({
+    meta: meta.value,
+    scores: scores.value,
+    session: session.value,
+    findings: findings.value,
+    ...(judgeResult.value ? { judgeResult: judgeResult.value } : {}),
+  });
+}
+
+function parseOptionalJudgeResult(value: unknown, path: string): ParseResult<JudgeResult | undefined> {
+  if (value === undefined || value === null) return ok(undefined);
+  const object = asObject(value, path);
+  if (!object.ok) return failIssues(object.issues);
+  const scores = parseNumberRecord(object.value.scores, `${path}.scores`);
+  const reasons = parseStringRecord(object.value.reasons, `${path}.reasons`);
+  const findings = asStringArray(object.value.findings, `${path}.findings`);
+  const issues = mergeIssues(scores, reasons, findings);
+  if (issues.length > 0) return failIssues(issues);
+  return ok({ scores: scores.value, reasons: reasons.value, findings: findings.value });
+}
+
+function parseStringRecord(value: unknown, path: string): ParseResult<Record<string, string>> {
+  const object = asObject(value, path);
+  if (!object.ok) return failIssues(object.issues);
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(object.value)) {
+    const parsed = asString(entry, `${path}.${key}`);
+    if (!parsed.ok) return failIssues(parsed.issues);
+    result[key] = parsed.value;
+  }
+  return ok(result);
 }
 
 function parseEvalMeta(value: Record<string, unknown>, path: string): ParseResult<EvalReport["meta"]> {
