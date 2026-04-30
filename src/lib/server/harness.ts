@@ -7,6 +7,8 @@ import { loadFileSuites, mergeSuiteSources } from "$eval/suite-files.js";
 import { loadTrialMeta } from "$eval/trial-meta.js";
 import type { LauncherConfig, LauncherSuiteDef } from "$eval/types.js";
 
+type TrialRef = { trial: string; variant: string };
+
 interface TrialConfigModule {
   default?: {
     description?: string;
@@ -16,8 +18,8 @@ interface TrialConfigModule {
 
 interface EvalConfigModule {
   default?: {
-    runSets?: Record<string, Array<{ trial: string; variant: string }>>;
-    suites?: Record<string, Array<{ trial: string; variant: string }>>;
+    runSets?: Record<string, unknown>;
+    suites?: Record<string, unknown>;
     models?: Array<{ provider?: string; model?: string }>;
     worker?: { provider?: string; model?: string };
     judge?: { provider?: string; model?: string };
@@ -53,12 +55,13 @@ export async function loadLauncherConfigFromEvalDir(evalDir: string): Promise<La
   );
 
   const evalConfig = await loadEvalConfig(evalDir);
-  const configuredSuites = {
+  const configuredSuites = normalizeConfigSuites({
     ...(evalConfig?.runSets ?? {}),
     ...(evalConfig?.suites ?? {}),
-  };
+  });
   const fileSuites = loadFileSuites(evalDir);
   const mergedSuites = mergeSuiteSources(configuredSuites, fileSuites);
+  validateSuiteReferences(mergedSuites, trials);
 
   const fileSuiteNames = new Set(fileSuites.map((suite) => suite.name));
   const suiteDefs: LauncherSuiteDef[] = Object.entries(mergedSuites).map(([suiteName, entries]) => {
@@ -93,8 +96,74 @@ export async function loadLauncherConfigFromEvalDir(evalDir: string): Promise<La
   };
 }
 
-export function getRunCommandForEvalDir(): string {
+export function getRunCommandForEvalDir(evalDir?: string): string {
+  if (!evalDir) return "bun eval.ts";
+
+  const packagePath = path.join(evalDir, "package.json");
+  if (!fs.existsSync(packagePath)) return "bun eval.ts";
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(packagePath, "utf-8")) as { scripts?: Record<string, unknown> };
+    if (typeof pkg.scripts?.eval === "string" && pkg.scripts.eval.trim()) {
+      return "npm run eval --";
+    }
+  } catch {
+    // Fall back to the legacy scaffold command when package metadata is absent or invalid.
+  }
+
   return "bun eval.ts";
+}
+
+function normalizeConfigSuites(value: Record<string, unknown>): Record<string, TrialRef[]> {
+  const suites: Record<string, TrialRef[]> = {};
+  for (const [suiteName, entries] of Object.entries(value)) {
+    if (!Array.isArray(entries)) {
+      throw new Error(`Eval launcher contract violation: suite "${suiteName}" must be an array`);
+    }
+    suites[suiteName] = entries.map((entry, index) => normalizeTrialRef(entry, `suite "${suiteName}" entry ${index}`));
+  }
+  return suites;
+}
+
+function normalizeTrialRef(value: unknown, label: string): TrialRef {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Eval launcher contract violation: ${label} must be an object`);
+  }
+
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.trial !== "string" || !entry.trial.trim()) {
+    throw new Error(`Eval launcher contract violation: ${label}.trial must be a non-empty string`);
+  }
+  if (typeof entry.variant !== "string" || !entry.variant.trim()) {
+    throw new Error(
+      `Eval launcher contract violation: ${label}.variant must be a non-empty string; use "default" for single-variant trials`,
+    );
+  }
+
+  return { trial: entry.trial, variant: entry.variant };
+}
+
+function validateSuiteReferences(
+  suites: Record<string, TrialRef[]>,
+  trials: Array<{ name: string; variants: string[] }>,
+): void {
+  const trialVariants = new Map(trials.map((trial) => [trial.name, new Set(trial.variants)]));
+  for (const [suiteName, entries] of Object.entries(suites)) {
+    for (const entry of entries) {
+      const variants = trialVariants.get(entry.trial);
+      if (!variants) {
+        throw new Error(
+          `Eval launcher contract violation: suite "${suiteName}" references unknown trial "${entry.trial}"`,
+        );
+      }
+      if (!variants.has(entry.variant)) {
+        const available = [...variants].join(", ") || "none";
+        throw new Error(
+          `Eval launcher contract violation: suite "${suiteName}" references unknown variant "${entry.variant}" for trial "${entry.trial}". Available variants: ${available}`,
+        );
+      }
+    }
+  }
 }
 
 function listTrials(trialsDir: string): string[] {
@@ -158,7 +227,7 @@ function resolveTsxLoaderPath(evalDir: string): string {
 
 function safeResolveTsxFromPackage(): string | null {
   try {
-    return require.resolve("tsx/dist/esm/index.mjs");
+    return require.resolve("tsx/esm");
   } catch {
     return null;
   }

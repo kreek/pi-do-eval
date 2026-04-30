@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  benchIndexCodec,
   partialTrialMetaCodec,
   projectRegistryCodec,
   runRequestCodec,
@@ -17,6 +18,42 @@ describe("contract codecs", () => {
     expect(runRequestCodec.parse({ type: "suite", suite: "smoke", noJudge: true }).ok).toBe(true);
     expect(runRequestCodec.parse({ type: "trial", trial: "a" }).ok).toBe(false);
     expect(runRequestCodec.parse({ type: "bench" }).ok).toBe(false);
+  });
+
+  it("preserves optional benchmark profile metadata in bench indexes", () => {
+    const parsed = benchIndexCodec.parse([
+      {
+        suite: "smoke",
+        benchRunId: "bench-1",
+        dir: "bench-1-smoke",
+        completedAt: "2026-01-01T00:00:00Z",
+        profiles: [
+          {
+            id: "baseline",
+            label: "Baseline",
+            factors: { harness: "codex", model: "gpt-5.4", layers: [] },
+          },
+          {
+            id: "layered",
+            label: "Layered",
+            factors: {
+              harness: "codex",
+              model: "gpt-5.4",
+              layers: [{ id: "quality-layer", kind: "skill-library", runtime: "codex" }],
+            },
+          },
+        ],
+        baselineProfileId: "baseline",
+        models: ["baseline", "layered"],
+        averages: { baseline: 70, layered: 84 },
+        averageDeltas: { layered: 14 },
+      },
+    ]);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.value[0]?.profiles?.[1]?.factors.layers[0]?.id).toBe("quality-layer");
+    expect(parsed.value[0]?.baselineProfileId).toBe("baseline");
+    expect(parsed.value[0]?.averageDeltas).toEqual({ layered: 14 });
   });
 
   it("normalizes project registries and drops invalid entries", () => {

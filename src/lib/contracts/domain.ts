@@ -9,9 +9,11 @@ import type {
   EvalReport,
   EvalRunStatus,
   EvalSession,
+  ExecutionProfileSnapshot,
   LauncherConfig,
   LauncherSuiteDef,
   LauncherTrial,
+  ProfileLayer,
   RunEnvironment,
   RunIndexEntry,
   RunRequest,
@@ -101,6 +103,47 @@ function parseNumberRecord(value: unknown, path: string): ParseResult<Record<str
     else issues.push(...parsed.issues);
   }
   return issues.length > 0 ? failIssues(issues) : ok(result);
+}
+
+function parseProfileLayer(value: unknown, path: string): ParseResult<ProfileLayer> {
+  const object = asObject(value, path);
+  if (!object.ok) return failIssues(object.issues);
+  const id = asString(object.value.id, `${path}.id`);
+  const kind = asString(object.value.kind, `${path}.kind`);
+  const runtime = asOptionalString(object.value.runtime, `${path}.runtime`);
+  const version = asOptionalString(object.value.version, `${path}.version`);
+  const capabilities = asOptionalStringArray(object.value.capabilities, `${path}.capabilities`);
+  const issues = mergeIssues(id, kind, runtime, version, capabilities);
+  if (issues.length > 0) return failIssues(issues);
+  return ok({
+    id: id.value,
+    kind: kind.value,
+    ...(runtime.value ? { runtime: runtime.value } : {}),
+    ...(version.value ? { version: version.value } : {}),
+    ...(capabilities.value ? { capabilities: capabilities.value } : {}),
+  });
+}
+
+function parseExecutionProfileSnapshot(value: unknown, path: string): ParseResult<ExecutionProfileSnapshot> {
+  const object = asObject(value, path);
+  if (!object.ok) return failIssues(object.issues);
+  const id = asString(object.value.id, `${path}.id`);
+  const label = asString(object.value.label, `${path}.label`);
+  const factors = asObject(object.value.factors, `${path}.factors`);
+  const layers =
+    factors.ok && Array.isArray(factors.value.layers)
+      ? parseArray(factors.value.layers, `${path}.factors.layers`, parseProfileLayer)
+      : fail(`${path}.factors.layers must be an array`);
+  const issues = mergeIssues(id, label, factors, layers);
+  if (issues.length > 0) return failIssues(issues);
+  return ok({
+    id: id.value,
+    label: label.value,
+    factors: {
+      ...factors.value,
+      layers: layers.value,
+    },
+  });
 }
 
 function parseBudgetConfig(value: unknown, path: string): ParseResult<BudgetConfig | undefined> {
@@ -875,17 +918,41 @@ function parseBenchIndexEntry(value: unknown, path: string): ParseResult<BenchIn
   const benchRunId = asString(object.value.benchRunId, `${path}.benchRunId`);
   const dir = asString(object.value.dir, `${path}.dir`);
   const completedAt = asString(object.value.completedAt, `${path}.completedAt`);
+  const profiles =
+    object.value.profiles === undefined
+      ? ok(undefined)
+      : Array.isArray(object.value.profiles)
+        ? parseArray(object.value.profiles, `${path}.profiles`, parseExecutionProfileSnapshot)
+        : fail(`${path}.profiles must be an array`);
+  const baselineProfileId = asOptionalString(object.value.baselineProfileId, `${path}.baselineProfileId`);
   const models = asStringArray(object.value.models, `${path}.models`);
   const averages = parseNumberRecord(object.value.averages, `${path}.averages`);
-  const issues = mergeIssues(suite, benchRunId, dir, completedAt, models, averages);
+  const averageDeltas =
+    object.value.averageDeltas === undefined
+      ? ok(undefined)
+      : parseNumberRecord(object.value.averageDeltas, `${path}.averageDeltas`);
+  const issues = mergeIssues(
+    suite,
+    benchRunId,
+    dir,
+    completedAt,
+    profiles,
+    baselineProfileId,
+    models,
+    averages,
+    averageDeltas,
+  );
   if (issues.length > 0) return failIssues(issues);
   return ok({
     suite: suite.value,
     benchRunId: benchRunId.value,
     dir: dir.value,
     completedAt: completedAt.value,
+    ...(profiles.value ? { profiles: profiles.value } : {}),
+    ...(baselineProfileId.value ? { baselineProfileId: baselineProfileId.value } : {}),
     models: models.value,
     averages: averages.value,
+    ...(averageDeltas.value ? { averageDeltas: averageDeltas.value } : {}),
   });
 }
 

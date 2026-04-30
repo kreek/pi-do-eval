@@ -19,7 +19,7 @@ export async function getProjectRuntime(projectId: string): Promise<ProjectRunti
   return {
     project,
     launcherConfig: await loadLauncherConfigFromEvalDir(project.evalDir),
-    runCommand: getRunCommandForEvalDir(),
+    runCommand: getRunCommandForEvalDir(project.evalDir),
     runsDir: project.evalDir,
   };
 }

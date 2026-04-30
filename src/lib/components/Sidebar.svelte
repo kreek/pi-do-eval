@@ -14,19 +14,44 @@
 		toggleSuite,
 		toggleSuiteRun,
 	} from "../../stores/selection.js";
+	import { benchFirstAverageDelta, benchProfileCountLabel } from "$lib/bench-view.js";
 	import { scoreColor, deltaColor, formatDelta, formatDate } from "$lib/utils.js";
 </script>
 
 <nav class="flex flex-col h-full overflow-y-auto bg-background-subtle border-r border-border-default">
-	<div class="px-4 py-2 text-[10.5px] font-semibold tracking-wider uppercase text-foreground-subtle border-b border-border-muted">
-		Suites & Runs
-	</div>
-
 	{#if $sidebarItems.length === 0 && $benchIndex.length === 0}
 		<div class="px-5 py-4 text-[12.75px] text-foreground-muted">No suite runs yet.</div>
 	{/if}
 
 	<div class="flex-1 overflow-y-auto">
+		{#if $benchIndex.length > 0}
+			<div class="border-b border-border-default">
+				<div class="px-4 py-2 text-[10.5px] font-semibold tracking-wider uppercase text-foreground-subtle">
+					Benchmarks
+				</div>
+				{#each $benchIndex as bench (bench.benchRunId)}
+					{@const delta = benchFirstAverageDelta(bench)}
+					<button
+						class="w-full flex items-center gap-1.5 px-4 py-1.5 text-left text-[11px] transition-colors hover:bg-background-muted"
+						class:border-l-2={$selectedBenchId === bench.benchRunId}
+						class:border-l-accent-blue={$selectedBenchId === bench.benchRunId}
+						onclick={() => selectBench(bench.benchRunId)}
+					>
+						<span class="text-foreground">{bench.suite}</span>
+						<span class="text-foreground-subtle">{benchProfileCountLabel(bench)}</span>
+						{#if delta != null && delta !== 0}
+							<span class="font-mono" style="color: {deltaColor(delta)}">{formatDelta(delta)}</span>
+						{/if}
+						<span class="ml-auto text-[10.5px] text-foreground-subtle">{formatDate(bench.completedAt)}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		<div class="px-4 py-2 text-[10.5px] font-semibold tracking-wider uppercase text-foreground-subtle border-b border-border-muted">
+			Suites & Runs
+		</div>
+
 		{#each $sidebarItems as suite (suite.suite)}
 			<div class="border-b border-border-muted">
 				<div
@@ -145,24 +170,4 @@
 			</div>
 		{/each}
 	</div>
-
-	{#if $benchIndex.length > 0}
-		<div class="border-t border-border-default">
-			<div class="px-4 py-2 text-[10.5px] font-semibold tracking-wider uppercase text-foreground-subtle">
-				Benchmarks
-			</div>
-			{#each $benchIndex as bench (bench.benchRunId)}
-				<button
-					class="w-full flex items-center gap-1.5 px-4 py-1.5 text-left text-[11px] transition-colors hover:bg-background-muted"
-					class:border-l-2={$selectedBenchId === bench.benchRunId}
-					class:border-l-accent-blue={$selectedBenchId === bench.benchRunId}
-					onclick={() => selectBench(bench.benchRunId)}
-				>
-					<span class="text-foreground">{bench.suite}</span>
-					<span class="text-foreground-subtle">{bench.models.length} models</span>
-					<span class="ml-auto text-[10.5px] text-foreground-subtle">{formatDate(bench.completedAt)}</span>
-				</button>
-			{/each}
-		</div>
-	{/if}
 </nav>

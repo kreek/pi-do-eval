@@ -249,16 +249,14 @@
 									>
 										Run suite
 									</button>
-									{#if (config.models?.length ?? 0) > 0}
-										<button
-											type="button"
-											class="rounded border border-border-default px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted transition-colors hover:border-accent-purple hover:text-accent-purple disabled:opacity-40"
-											disabled={$launcherBusy}
-											onclick={() => void runBench(suite.name)}
-										>
-											Run bench
-										</button>
-									{/if}
+									<button
+										type="button"
+										class="rounded border border-border-default px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-foreground-muted transition-colors hover:border-accent-purple hover:text-accent-purple disabled:opacity-40"
+										disabled={$launcherBusy}
+										onclick={() => void runBench(suite.name)}
+									>
+										Run bench
+									</button>
 									{#if suite.source === "file"}
 										<button
 											type="button"

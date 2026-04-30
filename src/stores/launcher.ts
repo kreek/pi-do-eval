@@ -38,19 +38,20 @@ export async function launchRun(request: RunRequest): Promise<LauncherActionResu
     }
 
     resetCurrentReports();
-    if (request.type !== "bench") {
-      const config = get(launcherConfig);
-      const modelLabel = request.model ?? (config?.defaultWorker ? formatModel(config.defaultWorker) : "agent default");
-      setAutoSelect({
-        id: result.id ?? "pending",
-        type: request.type,
-        suite: request.type === "suite" ? request.suite : undefined,
-        trial: request.type === "trial" ? request.trial : undefined,
-        variant: request.type === "trial" ? request.variant : undefined,
-        modelLabel,
-        startedAt: new Date().toISOString(),
-      });
-    }
+    const config = get(launcherConfig);
+    const modelLabel =
+      request.type === "bench"
+        ? undefined
+        : (request.model ?? (config?.defaultWorker ? formatModel(config.defaultWorker) : "agent default"));
+    setAutoSelect({
+      id: result.id ?? "pending",
+      type: request.type,
+      suite: request.type === "suite" || request.type === "bench" ? request.suite : undefined,
+      trial: request.type === "trial" ? request.trial : undefined,
+      variant: request.type === "trial" ? request.variant : undefined,
+      modelLabel,
+      startedAt: new Date().toISOString(),
+    });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Network error" };

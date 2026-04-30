@@ -1,5 +1,5 @@
 import { get } from "svelte/store";
-import type { EvalEvent, RunIndexEntry } from "$eval/types.js";
+import type { BenchIndexEntry, EvalEvent, RunIndexEntry } from "$eval/types.js";
 import { benchIndexCodec, evalEventCodec, suiteIndexCodec } from "$lib/contracts/domain.js";
 import { readJson } from "./api.js";
 import { activeProjectId, projectApiPath } from "./projects.js";
@@ -8,6 +8,7 @@ import {
   expandedRuns,
   expandedSuites,
   type PendingLaunch,
+  selectBench,
   selectedRunDir,
   selectedSuiteName,
   selectedSuiteRunId,
@@ -158,7 +159,11 @@ async function refreshIndices(projectId: string): Promise<void> {
   ]);
   if (projectId !== get(activeProjectId)) return;
   if (suiteResp?.ok) suiteIndex.set(await readJson(suiteResp, suiteIndexCodec, "Invalid suite index"));
-  if (benchResp?.ok) benchIndex.set(await readJson(benchResp, benchIndexCodec, "Invalid bench index"));
+  if (benchResp?.ok) {
+    const nextBenchIndex = await readJson(benchResp, benchIndexCodec, "Invalid bench index");
+    benchIndex.set(nextBenchIndex);
+    resolvePendingSelectionFromBench(nextBenchIndex);
+  }
 
   const suiteName = get(selectedSuiteName);
   const suiteRunId = get(selectedSuiteRunId);
@@ -227,6 +232,19 @@ function resolvePendingSelectionFromRuns(currentRuns: RunIndexEntry[]): void {
     });
     pendingAutoSelect = null;
   }
+}
+
+function resolvePendingSelectionFromBench(currentBench: BenchIndexEntry[]): void {
+  const pendingLaunch = pendingAutoSelect;
+  if (!pendingLaunch || pendingLaunch.type !== "bench") return;
+
+  const candidate = currentBench.find(
+    (bench) => bench.suite === pendingLaunch.suite && isRecentEnough(bench.completedAt, pendingLaunch.startedAt),
+  );
+  if (!candidate) return;
+
+  selectBench(candidate.benchRunId);
+  pendingAutoSelect = null;
 }
 
 function matchesPendingLaunch(run: RunIndexEntry, launch: PendingLaunch): boolean {

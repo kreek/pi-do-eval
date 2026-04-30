@@ -100,6 +100,28 @@ describe("spawnRun", () => {
       expect.objectContaining({ cwd: tmpDir }),
     );
   });
+
+  it("passes standard launcher args through package eval scripts", () => {
+    const child = new FakeChildProcess();
+    nextChild = child;
+
+    const result = spawnRun(
+      "project-npm",
+      { type: "bench", suite: "quick" },
+      "npm run eval --",
+      tmpDir,
+      launcherConfig,
+    );
+
+    expect(result).toEqual({ ok: true, id: expect.stringMatching(/^run-/) });
+    expect(spawn).toHaveBeenCalledWith(
+      "npm",
+      ["run", "eval", "--", "bench", "quick"],
+      expect.objectContaining({ cwd: tmpDir }),
+    );
+
+    child.emit("exit", 0);
+  });
 });
 
 describe("killActiveRun", () => {
