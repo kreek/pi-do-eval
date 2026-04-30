@@ -138,7 +138,7 @@ describe("agent harnesses", () => {
     expect(spec.env?.CODEX_HOME).toBeUndefined();
   });
 
-  it("builds an isolated Codex command with an isolated home and ignored user config", () => {
+  it("builds an isolated Codex command without ignoring user config by default", () => {
     const workDir = path.join(os.tmpdir(), "pi-do-eval-work");
     const spec = codexHarness.buildWorkerCommand({
       workDir,
@@ -156,6 +156,29 @@ describe("agent harnesses", () => {
     expect(spec.env?.CODEX_HOME).toContain(path.join(os.tmpdir(), "pi-do-eval-codex-home"));
     const relativeHome = path.relative(workDir, spec.env?.CODEX_HOME ?? "");
     expect(relativeHome.startsWith("..") || path.isAbsolute(relativeHome)).toBe(true);
+    // isolateHome alone no longer forces --ignore-user-config; the per-run
+    // CODEX_HOME's config.toml is loaded so layered profile setup (e.g.
+    // pluginMarketplaces) can take effect. Set ignoreUserConfig: true to opt
+    // back in.
+    expect(spec.args).not.toContain("--ignore-user-config");
+  });
+
+  it("ignores user config when ignoreUserConfig is set alongside isolateHome", () => {
+    const workDir = path.join(os.tmpdir(), "pi-do-eval-work");
+    const spec = codexHarness.buildWorkerCommand({
+      workDir,
+      prompt: "Do the task",
+      extensionPath: "/unused.ts",
+      model: "gpt-5.2",
+      agent: {
+        harness: "codex",
+        codex: {
+          isolateHome: true,
+          ignoreUserConfig: true,
+        },
+      },
+    });
+
     expect(spec.args).toContain("--ignore-user-config");
   });
 });

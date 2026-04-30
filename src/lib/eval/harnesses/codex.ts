@@ -64,7 +64,7 @@ export const codexHarness: AgentHarness = {
     const profile = ctx.agent?.codex?.profile;
     if (model) args.push("--model", model);
     if (profile) args.push("--profile", profile);
-    if (ctx.agent?.codex?.ignoreUserConfig || ctx.agent?.codex?.isolateHome) args.push("--ignore-user-config");
+    if (ctx.agent?.codex?.ignoreUserConfig) args.push("--ignore-user-config");
     args.push(...(ctx.agent?.args ?? []), ...(ctx.agent?.codex?.extraArgs ?? []), ctx.prompt);
 
     return {
