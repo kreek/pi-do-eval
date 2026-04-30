@@ -17,9 +17,7 @@ describe("captureEnvironment", () => {
 describe("generateRunId", () => {
   it("returns a UUID-shaped string", () => {
     const id = generateRunId();
-    expect(id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it("returns unique ids on consecutive calls", () => {

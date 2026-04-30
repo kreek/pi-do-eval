@@ -18,10 +18,7 @@ export interface ProjectStats {
   configAvailable: boolean;
 }
 
-export function computeProjectStats(
-  config: LauncherConfig | null,
-  suiteIndex: SuiteIndexEntry[],
-): ProjectStats {
+export function computeProjectStats(config: LauncherConfig | null, suiteIndex: SuiteIndexEntry[]): ProjectStats {
   if (!config) {
     return {
       trialCount: 0,
@@ -48,9 +45,7 @@ function findLatestSuiteRun(entries: SuiteIndexEntry[]): LatestSuiteRun | null {
   const latest = sorted[0];
   if (!latest) return null;
 
-  const prior = sorted.find(
-    (entry) => entry.suite === latest.suite && entry.suiteRunId !== latest.suiteRunId,
-  );
+  const prior = sorted.find((entry) => entry.suite === latest.suite && entry.suiteRunId !== latest.suiteRunId);
 
   const delta = prior ? latest.averageOverall - prior.averageOverall : null;
 

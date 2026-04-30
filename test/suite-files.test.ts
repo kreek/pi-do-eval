@@ -81,9 +81,7 @@ describe("mergeSuiteSources", () => {
     const configSuites = {
       "from-config": [{ trial: "trial-a", variant: "default" }],
     };
-    const fileSuites: SuiteDefinition[] = [
-      { name: "from-file", trials: [{ trial: "trial-b", variant: "default" }] },
-    ];
+    const fileSuites: SuiteDefinition[] = [{ name: "from-file", trials: [{ trial: "trial-b", variant: "default" }] }];
 
     const merged = mergeSuiteSources(configSuites, fileSuites);
     expect(Object.keys(merged).sort()).toEqual(["from-config", "from-file"]);
@@ -94,9 +92,7 @@ describe("mergeSuiteSources", () => {
     const configSuites = {
       smoke: [{ trial: "old", variant: "default" }],
     };
-    const fileSuites: SuiteDefinition[] = [
-      { name: "smoke", trials: [{ trial: "new", variant: "default" }] },
-    ];
+    const fileSuites: SuiteDefinition[] = [{ name: "smoke", trials: [{ trial: "new", variant: "default" }] }];
 
     const merged = mergeSuiteSources(configSuites, fileSuites);
     expect(merged.smoke).toEqual([{ trial: "new", variant: "default" }]);
@@ -130,9 +126,7 @@ describe("writeFileSuite + deleteFileSuite", () => {
   });
 
   it("rejects invalid suite names to avoid path traversal", () => {
-    expect(() =>
-      writeFileSuite(tmpDir, { name: "../evil", trials: [] }),
-    ).toThrow();
+    expect(() => writeFileSuite(tmpDir, { name: "../evil", trials: [] })).toThrow();
     expect(() => deleteFileSuite(tmpDir, "../evil")).toThrow();
   });
 });

@@ -1,20 +1,17 @@
-import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { captureEnvironment } from "./environment.js";
-import { parseSessionLines } from "./parser.js";
+import { resolveHarness } from "./harnesses/index.js";
+import type { AgentRuntimeConfig } from "./harnesses/types.js";
+import { runProcessWithTimeouts } from "./process.js";
 import { updateRunIndex } from "./reporter.js";
-import { assertSandboxAvailable, buildSandboxedCommand } from "./sandbox.js";
 import type { AgentSnapshot, EvalEvent, EvalMeta, EvalPlugin, EvalSession, SandboxOptions } from "./types.js";
 
 export interface LiveOptions {
   runDir: string;
   runsDir: string;
   intervalMs?: number;
-  meta: Pick<
-    EvalMeta,
-    "trial" | "variant" | "suite" | "suiteRunId" | "epoch" | "totalEpochs" | "runId"
-  > & {
+  meta: Pick<EvalMeta, "trial" | "variant" | "suite" | "suiteRunId" | "epoch" | "totalEpochs" | "runId"> & {
     workerModel?: string;
     agentSnapshot?: AgentSnapshot;
   };
@@ -33,6 +30,7 @@ export interface RunOptions {
   provider?: string;
   model?: string;
   thinking?: string;
+  agent?: AgentRuntimeConfig;
   sandbox?: boolean | SandboxOptions;
 }
 
@@ -50,32 +48,24 @@ const DEFAULT_INACTIVITY = 2 * 60 * 1000; // 2 minutes
 export async function runEval(opts: RunOptions): Promise<RunResult> {
   const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT;
   const inactivity = opts.inactivityMs ?? DEFAULT_INACTIVITY;
+  const harness = resolveHarness(opts.agent?.harness ?? "pi");
 
-  // Copy scaffold files if they exist
   const scaffoldDir = path.join(opts.trialDir, "scaffold");
   if (fs.existsSync(scaffoldDir)) {
     copyDirSync(scaffoldDir, opts.workDir);
   }
 
-  // Build pi command
-  const args = ["-p", "--mode", "json", "--no-extensions", "-e", opts.extensionPath, "--no-session"];
-  if (opts.provider) args.push("--provider", opts.provider);
-  if (opts.model) args.push("--model", opts.model);
-  if (opts.thinking) args.push("--thinking", opts.thinking);
-  args.push(opts.prompt);
+  await harness.prepare?.({ workDir: opts.workDir, agent: opts.agent });
 
   const lines: string[] = [];
-  let stderr = "";
-  let lastActivity = Date.now();
+  const beforeFiles = harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined;
 
-  // Live mode setup
   const live = opts.live;
   let liveInterval: ReturnType<typeof setInterval> | undefined;
   let sessionStream: fs.WriteStream | undefined;
 
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
-
   const environment = captureEnvironment();
 
   if (live) {
@@ -98,9 +88,23 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
     });
   }
 
+  function ingestSnapshot(exitCode: number | null, endedAt: number): EvalSession {
+    return harness.ingestWorkerSession({
+      rawLines: lines,
+      stderr: "",
+      plugin: opts.plugin,
+      exitCode,
+      status: "completed",
+      startedAt: startMs,
+      endedAt,
+      beforeFiles,
+      afterFiles: harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined,
+    });
+  }
+
   function writeLiveSnapshot() {
     if (!live) return;
-    const session = parseSessionLines(lines, opts.plugin);
+    const session = ingestSnapshot(null, Date.now());
     const snapshot = {
       meta: {
         ...live.meta,
@@ -125,99 +129,62 @@ export async function runEval(opts: RunOptions): Promise<RunResult> {
     });
   }
 
-  return new Promise<RunResult>((resolve) => {
-    assertSandboxAvailable(opts.sandbox);
-    let command = "pi";
-    let spawnArgs = args;
-    if (opts.sandbox) {
-      const sandboxOpts = opts.sandbox === true ? undefined : opts.sandbox;
-      ({ command, args: spawnArgs } = buildSandboxedCommand("pi", args, {
-        workDir: opts.workDir,
-        workDirAccess: "rw",
-        options: sandboxOpts,
-      }));
-    }
-
-    const proc = spawn(command, spawnArgs, {
-      cwd: opts.workDir,
-      env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    if (live) {
-      liveInterval = setInterval(writeLiveSnapshot, live.intervalMs ?? 2000);
-    }
-
-    let settled = false;
-    function finish(status: RunResult["status"], code: number | null) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(hardTimer);
-      clearInterval(idleCheck);
-      if (liveInterval) clearInterval(liveInterval);
-      sessionStream?.end();
-      const session = parseSessionLines(lines, opts.plugin);
-      session.exitCode = code;
-      if (live) {
-        writeLiveSnapshot();
-        updateRunIndex(live.runsDir, live.emit);
-        live.emit?.({
-          type: "run_completed",
-          timestamp: Date.now(),
-          dir: path.basename(live.runDir),
-          status,
-          durationMs: Date.now() - startMs,
-        });
-      }
-      resolve({ session, status, exitCode: code, stderr, workDir: opts.workDir });
-    }
-
-    // Buffer stdout lines
-    let buffer = "";
-    proc.stdout.on("data", (chunk: Buffer) => {
-      lastActivity = Date.now();
-      buffer += chunk.toString();
-      const parts = buffer.split("\n");
-      buffer = parts.pop() ?? "";
-      for (const line of parts) {
-        if (line.trim()) {
-          lines.push(line);
-          sessionStream?.write(`${line}\n`);
-        }
-      }
-    });
-
-    proc.stderr.on("data", (chunk: Buffer) => {
-      lastActivity = Date.now();
-      stderr += chunk.toString();
-    });
-
-    proc.on("close", (code) => {
-      // Flush remaining buffer
-      if (buffer.trim()) lines.push(buffer);
-      finish("completed", code);
-    });
-
-    proc.on("error", () => {
-      finish("crashed", null);
-    });
-
-    // Hard timeout
-    const hardTimer = setTimeout(() => {
-      proc.kill("SIGTERM");
-      setTimeout(() => proc.kill("SIGKILL"), 5000);
-      finish("timeout", null);
-    }, timeout);
-
-    // Inactivity check
-    const idleCheck = setInterval(() => {
-      if (Date.now() - lastActivity > inactivity) {
-        proc.kill("SIGTERM");
-        setTimeout(() => proc.kill("SIGKILL"), 5000);
-        finish("stalled", null);
-      }
-    }, 10_000);
+  const spawnSpec = harness.buildWorkerCommand({
+    workDir: opts.workDir,
+    prompt: opts.prompt,
+    extensionPath: opts.extensionPath,
+    provider: opts.provider,
+    model: opts.model,
+    thinking: opts.thinking,
+    agent: opts.agent,
   });
+
+  if (live) {
+    liveInterval = setInterval(writeLiveSnapshot, live.intervalMs ?? 2000);
+  }
+
+  const result = await runProcessWithTimeouts({
+    spawnSpec,
+    workDir: opts.workDir,
+    timeoutMs: timeout,
+    inactivityMs: inactivity,
+    sandbox: opts.sandbox,
+    onStdoutLine(line) {
+      lines.push(line);
+      sessionStream?.write(`${line}\n`);
+    },
+  });
+
+  if (liveInterval) clearInterval(liveInterval);
+  sessionStream?.end();
+
+  const session = harness.ingestWorkerSession({
+    rawLines: lines,
+    stderr: result.stderr,
+    plugin: opts.plugin,
+    exitCode: result.exitCode,
+    status: result.status,
+    startedAt: result.startedAt,
+    endedAt: result.endedAt,
+    beforeFiles,
+    afterFiles: harness.requiresFileSnapshot ? listFiles(opts.workDir) : undefined,
+  });
+
+  if (live) {
+    writeLiveSnapshot();
+    updateRunIndex(live.runsDir, live.emit);
+    live.emit?.({
+      type: "run_completed",
+      timestamp: Date.now(),
+      dir: path.basename(live.runDir),
+      status: result.status,
+      durationMs: Date.now() - startMs,
+    });
+  }
+
+  await harness.cleanup?.({ workDir: opts.workDir, agent: opts.agent });
+
+  return { session, status: result.status, exitCode: result.exitCode, stderr: result.stderr, workDir: opts.workDir };
 }
 
 function copyDirSync(src: string, dest: string) {
@@ -229,6 +196,26 @@ function copyDirSync(src: string, dest: string) {
       copyDirSync(srcPath, destPath);
     } else {
       fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function listFiles(root: string): Map<string, string> {
+  const files = new Map<string, string>();
+  if (!fs.existsSync(root)) return files;
+  collectFiles(root, root, files);
+  return files;
+}
+
+function collectFiles(root: string, current: string, files: Map<string, string>) {
+  for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+    const fullPath = path.join(current, entry.name);
+    const relativePath = path.relative(root, fullPath);
+    if (entry.isDirectory()) {
+      collectFiles(root, fullPath, files);
+    } else if (entry.isFile()) {
+      const stat = fs.statSync(fullPath);
+      files.set(relativePath, `${stat.size}:${stat.mtimeMs}`);
     }
   }
 }

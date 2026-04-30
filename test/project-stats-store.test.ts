@@ -1,11 +1,7 @@
 import { get } from "svelte/store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LauncherConfig, SuiteIndexEntry } from "../src/lib/eval/types.js";
-import {
-  allProjectStats,
-  loadProjectStats,
-  resetProjectStats,
-} from "../src/stores/project-stats.js";
+import { allProjectStats, loadProjectStats, resetProjectStats } from "../src/stores/project-stats.js";
 
 const launcherConfig: LauncherConfig = {
   trials: [

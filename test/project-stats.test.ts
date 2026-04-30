@@ -97,9 +97,7 @@ describe("computeProjectStats", () => {
   });
 
   it("returns null delta when the suite has no prior run", () => {
-    const entries: SuiteIndexEntry[] = [
-      makeSuiteEntry({ suite: "smoke", suiteRunId: "only", averageOverall: 88 }),
-    ];
+    const entries: SuiteIndexEntry[] = [makeSuiteEntry({ suite: "smoke", suiteRunId: "only", averageOverall: 88 })];
     const stats = computeProjectStats(makeLauncherConfig(), entries);
     expect(stats.latestSuiteRun?.delta).toBeNull();
   });

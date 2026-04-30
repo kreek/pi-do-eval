@@ -12,9 +12,7 @@ export class InitError extends Error {}
 function detectExtension(cwd: string): ExtensionInfo {
   const pkgPath = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgPath)) {
-    throw new InitError(
-      "No package.json found. Run this from the root of a Pi extension repo.",
-    );
+    throw new InitError("No package.json found. Run this from the root of a Pi extension repo.");
   }
 
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
@@ -55,9 +53,7 @@ export async function initEvalDir(cwd: string): Promise<InitResult> {
   const evalDir = path.join(cwd, "eval");
 
   if (fs.existsSync(evalDir) && fs.readdirSync(evalDir).length > 0) {
-    throw new InitError(
-      "eval/ directory already exists. Remove it first or run from a different directory.",
-    );
+    throw new InitError("eval/ directory already exists. Remove it first or run from a different directory.");
   }
 
   const ext = detectExtension(cwd);

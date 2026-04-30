@@ -61,21 +61,17 @@ export async function loadLauncherConfigFromEvalDir(evalDir: string): Promise<La
   const mergedSuites = mergeSuiteSources(configuredSuites, fileSuites);
 
   const fileSuiteNames = new Set(fileSuites.map((suite) => suite.name));
-  const suiteDefs: LauncherSuiteDef[] = Object.entries(mergedSuites).map(
-    ([suiteName, entries]) => {
-      const fileSuite = fileSuites.find((suite) => suite.name === suiteName);
-      const source = fileSuiteNames.has(suiteName) ? "file" : "config";
-      return {
-        name: suiteName,
-        ...(fileSuite?.description ? { description: fileSuite.description } : {}),
-        trials: entries,
-        ...(fileSuite?.regressionThreshold !== undefined
-          ? { regressionThreshold: fileSuite.regressionThreshold }
-          : {}),
-        source,
-      };
-    },
-  );
+  const suiteDefs: LauncherSuiteDef[] = Object.entries(mergedSuites).map(([suiteName, entries]) => {
+    const fileSuite = fileSuites.find((suite) => suite.name === suiteName);
+    const source = fileSuiteNames.has(suiteName) ? "file" : "config";
+    return {
+      name: suiteName,
+      ...(fileSuite?.description ? { description: fileSuite.description } : {}),
+      trials: entries,
+      ...(fileSuite?.regressionThreshold !== undefined ? { regressionThreshold: fileSuite.regressionThreshold } : {}),
+      source,
+    };
+  });
   suiteDefs.sort((a, b) => a.name.localeCompare(b.name));
 
   return {

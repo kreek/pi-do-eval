@@ -102,30 +102,23 @@ describe("regression status on SuiteIndexEntry", () => {
     const runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-regression-"));
     tempDirs.push(runsDir);
 
-    const first = makeSuite(
-      [{ report: makeReport("todo-cli", "typescript-vitest"), runDir: "r1" }],
-      "suite-010",
-    );
+    const first = makeSuite([{ report: makeReport("todo-cli", "typescript-vitest"), runDir: "r1" }], "suite-010");
     writeSuiteReport(first, runsDir);
     updateSuiteIndex(runsDir);
 
-    const index = JSON.parse(
-      fs.readFileSync(path.join(runsDir, "suites", "index.json"), "utf-8"),
-    ) as Array<{ suiteRunId: string; regressionStatus?: string }>;
+    const index = JSON.parse(fs.readFileSync(path.join(runsDir, "suites", "index.json"), "utf-8")) as Array<{
+      suiteRunId: string;
+      regressionStatus?: string;
+    }>;
 
-    expect(index.find((entry) => entry.suiteRunId === "suite-010")?.regressionStatus).toBe(
-      "baseline",
-    );
+    expect(index.find((entry) => entry.suiteRunId === "suite-010")?.regressionStatus).toBe("baseline");
   });
 
   it("derives improved/stable/regressed from suite report comparison", () => {
     const runsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-do-eval-regression-"));
     tempDirs.push(runsDir);
 
-    const baseline = makeSuite(
-      [{ report: makeReport("todo-cli", "typescript-vitest"), runDir: "r1" }],
-      "suite-base",
-    );
+    const baseline = makeSuite([{ report: makeReport("todo-cli", "typescript-vitest"), runDir: "r1" }], "suite-base");
     writeSuiteReport(baseline, runsDir);
 
     // Report with "regressed" comparison (hasRegression=true, averageDelta=-8)
@@ -217,9 +210,7 @@ describe("regression status on SuiteIndexEntry", () => {
 
     updateSuiteIndex(runsDir);
 
-    const index = JSON.parse(
-      fs.readFileSync(path.join(runsDir, "suites", "index.json"), "utf-8"),
-    ) as Array<{
+    const index = JSON.parse(fs.readFileSync(path.join(runsDir, "suites", "index.json"), "utf-8")) as Array<{
       suiteRunId: string;
       regressionStatus?: string;
       regressionDelta?: number;

@@ -2,11 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  loadTrialMeta,
-  type TrialMeta,
-  writeTrialMeta,
-} from "../src/lib/eval/trial-meta.js";
+import { loadTrialMeta, type TrialMeta, writeTrialMeta } from "../src/lib/eval/trial-meta.js";
 
 let tmpDir: string;
 
@@ -84,8 +80,6 @@ describe("writeTrialMeta", () => {
   });
 
   it("throws when the trial directory does not exist", () => {
-    expect(() => writeTrialMeta(tmpDir, "ghost", { enabled: true })).toThrow(
-      /Trial directory not found/,
-    );
+    expect(() => writeTrialMeta(tmpDir, "ghost", { enabled: true })).toThrow(/Trial directory not found/);
   });
 });

@@ -54,7 +54,9 @@ index.html
 }
 
 export function types(): string {
-  return `export interface TestStack {
+  return `import type { AgentRuntimeConfig } from "pi-do-eval";
+
+export interface TestStack {
   language: string;
   testFramework: string;
   scope?: string;
@@ -63,6 +65,7 @@ export function types(): string {
 
 export interface VariantConfig {
   stacks: TestStack[] | TestStack;
+  agent?: AgentRuntimeConfig;
 }
 
 export interface TrialConfig {
@@ -306,6 +309,7 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
     provider: opts.worker?.provider,
     model: opts.worker?.model,
     thinking: opts.worker?.thinking,
+    agent: variant.agent,
     live: {
       runDir,
       runsDir: RUNS_DIR,
@@ -378,7 +382,7 @@ async function runTrial(trialName: string, variantName: string, opts: RunTrialOp
 
   const workerModel = session.modelInfo
     ? \`\${session.modelInfo.provider}/\${session.modelInfo.model}\`
-    : (opts.worker?.model ?? "default");
+    : (variant.agent?.model ?? opts.worker?.model ?? "default");
   const judgeModel = opts.judge?.model ?? "default";
 
   const report: EvalReport = {

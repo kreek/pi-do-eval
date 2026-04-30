@@ -1,13 +1,7 @@
 export { createBenchReport, printBenchComparison, updateBenchIndex, writeBenchReport } from "./bench.js";
 export { captureEnvironment, generateRunId } from "./environment.js";
-export {
-  deleteFileSuite,
-  loadFileSuites,
-  mergeSuiteSources,
-  type SuiteDefinition,
-  writeFileSuite,
-} from "./suite-files.js";
-export { loadTrialMeta, type TrialMeta, writeTrialMeta } from "./trial-meta.js";
+export type { AgentHarness, AgentRuntimeConfig, SpawnSpec } from "./harnesses/index.js";
+export { codexHarness, piHarness, resolveHarness } from "./harnesses/index.js";
 export {
   finalizeJudgeOutcome,
   findBalancedJsonObjects,
@@ -16,6 +10,7 @@ export {
   runJudge,
 } from "./judge.js";
 export { parseSessionLines } from "./parser.js";
+export { type ProcessRunOptions, type ProcessRunResult, runProcessWithTimeouts } from "./process.js";
 export {
   formatMarkdown,
   printAggregatedSummary,
@@ -27,6 +22,13 @@ export {
 export { type LiveOptions, type RunOptions, type RunResult, runEval } from "./runner.js";
 export { assertSandboxAvailable, buildSandboxedCommand, checkAiJail } from "./sandbox.js";
 export { scoreSession } from "./scorer.js";
+export {
+  deleteFileSuite,
+  loadFileSuites,
+  mergeSuiteSources,
+  type SuiteDefinition,
+  writeFileSuite,
+} from "./suite-files.js";
 export {
   aggregateEpochEntries,
   buildSuiteReportEntry,
@@ -42,6 +44,7 @@ export {
   updateSuiteIndex,
   writeSuiteReport,
 } from "./suites.js";
+export { loadTrialMeta, type TrialMeta, writeTrialMeta } from "./trial-meta.js";
 export type {
   AgentSnapshot,
   AggregatedSuiteEntry,
@@ -65,7 +68,6 @@ export type {
   LauncherConfig,
   LauncherSuiteDef,
   LauncherTrial,
-  SuiteSource,
   PluginEvent,
   PluginScoreResult,
   RegressionSeverity,
@@ -81,6 +83,7 @@ export type {
   SuiteReport,
   SuiteReportEntry,
   SuiteReportSummary,
+  SuiteSource,
   ToolCallRecord,
   VerifyResult,
 } from "./types.js";

@@ -35,8 +35,7 @@ export const GET: RequestHandler = ({ url }) => {
   const hasPackageJson = fs.existsSync(path.join(resolved, "package.json"));
   const hasEvalTs = fs.existsSync(path.join(resolved, "eval.ts"));
   const hasEvalDir =
-    fs.existsSync(path.join(resolved, "eval")) &&
-    fs.existsSync(path.join(resolved, "eval", "eval.ts"));
+    fs.existsSync(path.join(resolved, "eval")) && fs.existsSync(path.join(resolved, "eval", "eval.ts"));
 
   let packageName: string | undefined;
   if (hasPackageJson) {
