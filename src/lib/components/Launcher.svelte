@@ -16,6 +16,16 @@
 	let isRunning = $derived(hasActiveRun || $pendingLaunch != null);
 	let runType = $state<"suite" | "trial" | "bench">("suite");
 	let runTypeInitializedForProject = $state<string | null>(null);
+	// `value` is the wire shape for RunRequest.type (kept as "suite" for the
+	// single-profile run because that's what the harness actually invokes);
+	// `label` is what users see. The labels match the sidebar's vocabulary —
+	// "Regression" for a single-profile suite run that lands in a regression
+	// timeline, "Bench" for a multi-profile comparison.
+	const launcherTabs = [
+		{ value: "bench" as const, label: "Bench" },
+		{ value: "suite" as const, label: "Regression" },
+		{ value: "trial" as const, label: "Trial" },
+	];
 	let selectedTrial = $state("");
 	let selectedVariant = $state("");
 	let selectedSuite = $state("");
@@ -218,17 +228,17 @@
 		</span>
 
 		<div class="inline-flex overflow-hidden rounded border border-border-default">
-			{#each ["suite", "trial", "bench"] as type}
+			{#each launcherTabs as tab (tab.value)}
 				<button
 					type="button"
 					class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:cursor-not-allowed"
-					class:bg-accent-blue={runType === type}
-					class:text-background={runType === type}
-					class:text-foreground-muted={runType !== type}
-					class:hover:text-foreground={runType !== type && !running}
-					onclick={() => (runType = type as "suite" | "trial" | "bench")}
+					class:bg-accent-blue={runType === tab.value}
+					class:text-background={runType === tab.value}
+					class:text-foreground-muted={runType !== tab.value}
+					class:hover:text-foreground={runType !== tab.value && !running}
+					onclick={() => (runType = tab.value)}
 				>
-					{type}
+					{tab.label}
 				</button>
 			{/each}
 		</div>
