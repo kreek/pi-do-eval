@@ -96,3 +96,13 @@ export function benchFirstAverageDelta(report: BenchLike): number | null {
   const profileId = benchComparisonIds(report)[0];
   return profileId ? benchAverageDelta(report, profileId) : null;
 }
+
+// The "treatment" profile's average — i.e. the non-baseline side of the
+// comparison. Used as the bench row's score badge so the sidebar's
+// rightmost column has the same shape across bench / suite / run rows.
+export function benchComparisonAverage(report: BenchLike): number | null {
+  const profileId = benchComparisonIds(report)[0];
+  if (!profileId) return null;
+  const value = report.averages[profileId];
+  return value !== undefined ? roundToTenth(value) : null;
+}

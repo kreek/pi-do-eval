@@ -22,6 +22,7 @@ import {
 } from "$lib/contracts/domain.js";
 import { readJson } from "./api.js";
 import { activeProjectId, projectApiPath } from "./projects.js";
+import { benchComparisonAverage, benchFirstAverageDelta } from "$lib/bench-view.js";
 
 // -- Raw data stores -----------------------------------------------------------
 
@@ -79,30 +80,47 @@ interface SuiteRunItem {
   children: RunIndexEntry[];
 }
 
-interface SidebarSuite {
+export interface RegressionGroup {
+  // Composite identity — a regression timeline is one (suite, profile) pair.
+  // Two profiles on the same suite have different layers, so their score
+  // histories aren't comparable as a single trend.
   suite: string;
+  workerModel: string;
+  groupKey: string;
   suiteRuns: SuiteRunItem[];
   latestAvg: number | null;
   delta: number | null;
 }
 
-export const sidebarItems = derived([runs, suiteIndex], ([$runs, $suiteIndex]) => {
-  const suiteMap = new Map<string, SuiteRunItem[]>();
+export function regressionGroupKey(suite: string, workerModel: string): string {
+  return `${suite}::${workerModel}`;
+}
 
-  // Group runs by suite/suiteRunId
+export interface BenchSidebarGroup {
+  suite: string;
+  benches: BenchIndexEntry[];
+  latestDelta: number | null;
+  latestComparisonAverage: number | null;
+}
+
+export const sidebarItems = derived([runs, suiteIndex], ([$runs, $suiteIndex]) => {
+  // Group by (suite, profile) so each regression timeline tracks one
+  // configuration drifting against itself, not different profiles mixed.
+  const groupMap = new Map<string, SuiteRunItem[]>();
+
   for (const run of $runs) {
     if (!run.suite || !run.suiteRunId) continue;
-    const key = run.suiteRunId;
-    if (!suiteMap.has(run.suite)) suiteMap.set(run.suite, []);
-    const suiteRuns = suiteMap.get(run.suite);
+    const groupKey = regressionGroupKey(run.suite, run.workerModel);
+    if (!groupMap.has(groupKey)) groupMap.set(groupKey, []);
+    const suiteRuns = groupMap.get(groupKey);
     if (!suiteRuns) continue;
 
-    let item = suiteRuns.find((sr) => sr.suiteRunId === key);
+    let item = suiteRuns.find((sr) => sr.suiteRunId === run.suiteRunId);
     if (!item) {
-      const idx = $suiteIndex.find((si) => si.suiteRunId === key);
+      const idx = $suiteIndex.find((si) => si.suiteRunId === run.suiteRunId);
       item = {
         suite: run.suite,
-        suiteRunId: key,
+        suiteRunId: run.suiteRunId,
         workerModel: run.workerModel,
         status: "running",
         totalRuns: 0,
@@ -121,23 +139,48 @@ export const sidebarItems = derived([runs, suiteIndex], ([$runs, $suiteIndex]) =
     if (item.finishedRuns === item.totalRuns) item.status = "completed";
   }
 
-  const result: SidebarSuite[] = [];
-  for (const [suite, suiteRuns] of suiteMap) {
+  const result: RegressionGroup[] = [];
+  for (const [groupKey, suiteRuns] of groupMap) {
     suiteRuns.sort((a, b) => {
       const aDate = a.children[0]?.startedAt ?? "";
       const bDate = b.children[0]?.startedAt ?? "";
       return bDate.localeCompare(aDate);
     });
 
-    const latestAvg = suiteRuns[0]?.averageOverall ?? null;
+    const first = suiteRuns[0];
+    const latestAvg = first?.averageOverall ?? null;
     const prevAvg = suiteRuns[1]?.averageOverall ?? null;
     const delta = latestAvg != null && prevAvg != null ? Math.round((latestAvg - prevAvg) * 10) / 10 : null;
-
-    result.push({ suite, suiteRuns, latestAvg, delta });
+    const suite = first?.suite ?? "";
+    const workerModel = first?.workerModel ?? "";
+    result.push({ suite, workerModel, groupKey, suiteRuns, latestAvg, delta });
   }
 
-  result.sort((a, b) => a.suite.localeCompare(b.suite));
+  result.sort((a, b) => {
+    const suiteCmp = a.suite.localeCompare(b.suite);
+    if (suiteCmp !== 0) return suiteCmp;
+    return a.workerModel.localeCompare(b.workerModel);
+  });
   return result;
+});
+
+export const benchSidebarGroups = derived(benchIndex, ($benchIndex): BenchSidebarGroup[] => {
+  const grouped = new Map<string, BenchIndexEntry[]>();
+  for (const bench of $benchIndex) {
+    if (!grouped.has(bench.suite)) grouped.set(bench.suite, []);
+    grouped.get(bench.suite)?.push(bench);
+  }
+
+  const groups: BenchSidebarGroup[] = [];
+  for (const [suite, benches] of grouped) {
+    benches.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+    const latest = benches[0];
+    const latestDelta = latest ? benchFirstAverageDelta(latest) : null;
+    const latestComparisonAverage = latest ? benchComparisonAverage(latest) : null;
+    groups.push({ suite, benches, latestDelta, latestComparisonAverage });
+  }
+  groups.sort((a, b) => a.suite.localeCompare(b.suite));
+  return groups;
 });
 
 // -- Data loading --------------------------------------------------------------

@@ -21,6 +21,19 @@ export const pendingLaunch = writable<PendingLaunch | null>(null);
 // Sidebar expansion state
 export const expandedSuites = writable<Set<string>>(new Set());
 export const expandedRuns = writable<Set<string>>(new Set());
+// Tracked separately from `expandedSuites` so a suite can be open in
+// the regression view while collapsed in the bench view, and vice
+// versa — the two views answer different questions.
+export const expandedBenchSuites = writable<Set<string>>(new Set());
+// Keyed by `${suite}::${workerModel}` since regression groups are per
+// (suite, profile) pair — not per suite — so two profiles' timelines
+// don't collapse together.
+export const expandedRegressionGroups = writable<Set<string>>(new Set());
+
+// Which top-of-sidebar tab is showing — bench (cross-profile comparison)
+// or regression (single-profile drift over time).
+export type SidebarView = "bench" | "regression";
+export const sidebarView = writable<SidebarView>("bench");
 
 export function selectSuiteName(name: string): void {
   pendingLaunch.set(null);
@@ -28,6 +41,7 @@ export function selectSuiteName(name: string): void {
   selectedSuiteRunId.set(null);
   selectedRunDir.set(null);
   selectedBenchId.set(null);
+  sidebarView.set("regression");
 }
 
 export function selectSuiteRun(suiteName: string, suiteRunId: string): void {
@@ -36,6 +50,7 @@ export function selectSuiteRun(suiteName: string, suiteRunId: string): void {
   selectedSuiteRunId.set(suiteRunId);
   selectedRunDir.set(null);
   selectedBenchId.set(null);
+  sidebarView.set("regression");
 
   // Auto-expand
   expandedSuites.update((s) => {
@@ -50,14 +65,26 @@ export function selectRun(dir: string): void {
   selectedSuiteRunId.set(null);
   selectedRunDir.set(dir);
   selectedBenchId.set(null);
+  sidebarView.set("regression");
 }
 
-export function selectBench(benchId: string): void {
+export function selectBench(benchId: string, suiteName?: string): void {
   pendingLaunch.set(null);
   selectedSuiteName.set(null);
   selectedSuiteRunId.set(null);
   selectedRunDir.set(null);
   selectedBenchId.set(benchId);
+  sidebarView.set("bench");
+  if (suiteName) {
+    expandedBenchSuites.update((s) => {
+      s.add(suiteName);
+      return s;
+    });
+  }
+}
+
+export function setSidebarView(view: SidebarView): void {
+  sidebarView.set(view);
 }
 
 export function selectPendingLaunch(launch: PendingLaunch): void {
@@ -80,12 +107,38 @@ export function resetSelection(): void {
   pendingLaunch.set(null);
   expandedSuites.set(new Set());
   expandedRuns.set(new Set());
+  expandedBenchSuites.set(new Set());
+  expandedRegressionGroups.set(new Set());
+  sidebarView.set("bench");
 }
 
 export function toggleSuite(name: string): void {
   expandedSuites.update((s) => {
     if (s.has(name)) s.delete(name);
     else s.add(name);
+    return s;
+  });
+}
+
+export function toggleBenchSuite(name: string): void {
+  expandedBenchSuites.update((s) => {
+    if (s.has(name)) s.delete(name);
+    else s.add(name);
+    return s;
+  });
+}
+
+export function toggleRegressionGroup(groupKey: string): void {
+  expandedRegressionGroups.update((s) => {
+    if (s.has(groupKey)) s.delete(groupKey);
+    else s.add(groupKey);
+    return s;
+  });
+}
+
+export function expandRegressionGroup(groupKey: string): void {
+  expandedRegressionGroups.update((s) => {
+    s.add(groupKey);
     return s;
   });
 }
