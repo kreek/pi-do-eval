@@ -19,15 +19,12 @@ export interface PendingLaunch {
 export const pendingLaunch = writable<PendingLaunch | null>(null);
 
 // Sidebar expansion state
-export const expandedSuites = writable<Set<string>>(new Set());
 export const expandedRuns = writable<Set<string>>(new Set());
-// Tracked separately from `expandedSuites` so a suite can be open in
-// the regression view while collapsed in the bench view, and vice
-// versa — the two views answer different questions.
+// Bench view is keyed on suite name (one bench group per suite).
 export const expandedBenchSuites = writable<Set<string>>(new Set());
-// Keyed by `${suite}::${workerModel}` since regression groups are per
-// (suite, profile) pair — not per suite — so two profiles' timelines
-// don't collapse together.
+// Regression view is keyed on `${suite}::${workerModel}` — each
+// (suite, profile) pair is its own timeline, so two profiles on the
+// same suite collapse independently.
 export const expandedRegressionGroups = writable<Set<string>>(new Set());
 
 // Which top-of-sidebar tab is showing — bench (cross-profile comparison)
@@ -35,16 +32,7 @@ export const expandedRegressionGroups = writable<Set<string>>(new Set());
 export type SidebarView = "bench" | "regression";
 export const sidebarView = writable<SidebarView>("bench");
 
-export function selectSuiteName(name: string): void {
-  pendingLaunch.set(null);
-  selectedSuiteName.set(name);
-  selectedSuiteRunId.set(null);
-  selectedRunDir.set(null);
-  selectedBenchId.set(null);
-  sidebarView.set("regression");
-}
-
-export function selectSuiteRun(suiteName: string, suiteRunId: string): void {
+export function selectSuiteRun(suiteName: string, suiteRunId: string, workerModel?: string): void {
   pendingLaunch.set(null);
   selectedSuiteName.set(suiteName);
   selectedSuiteRunId.set(suiteRunId);
@@ -52,11 +40,16 @@ export function selectSuiteRun(suiteName: string, suiteRunId: string): void {
   selectedBenchId.set(null);
   sidebarView.set("regression");
 
-  // Auto-expand
-  expandedSuites.update((s) => {
-    s.add(suiteName);
-    return s;
-  });
+  // Auto-expand the matching regression group so the just-selected run is
+  // visible in the sidebar's collapsed tree. The group is keyed by the
+  // composite (suite, profile) — callers that know the workerModel pass it
+  // explicitly; older callers without it fall back to no auto-expand.
+  if (workerModel) {
+    expandedRegressionGroups.update((s) => {
+      s.add(`${suiteName}::${workerModel}`);
+      return s;
+    });
+  }
 }
 
 export function selectRun(dir: string): void {
@@ -105,19 +98,10 @@ export function resetSelection(): void {
   selectedRunDir.set(null);
   selectedBenchId.set(null);
   pendingLaunch.set(null);
-  expandedSuites.set(new Set());
   expandedRuns.set(new Set());
   expandedBenchSuites.set(new Set());
   expandedRegressionGroups.set(new Set());
   sidebarView.set("bench");
-}
-
-export function toggleSuite(name: string): void {
-  expandedSuites.update((s) => {
-    if (s.has(name)) s.delete(name);
-    else s.add(name);
-    return s;
-  });
 }
 
 export function toggleBenchSuite(name: string): void {
@@ -153,8 +137,8 @@ export function toggleSuiteRun(id: string): void {
 
 export function focusRun(run: RunIndexEntry): void {
   if (run.suite) {
-    expandedSuites.update((s) => {
-      s.add(run.suite as string);
+    expandedRegressionGroups.update((s) => {
+      s.add(`${run.suite}::${run.workerModel}`);
       return s;
     });
   }

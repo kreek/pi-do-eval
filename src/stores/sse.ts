@@ -6,7 +6,6 @@ import { activeProjectId, projectApiPath } from "./projects.js";
 import { benchIndex, loadLiveRunReport, loadRunReport, loadSuiteReport, runs, suiteIndex } from "./runs.js";
 import {
   expandedRuns,
-  expandedSuites,
   type PendingLaunch,
   selectBench,
   selectedRunDir,
@@ -188,11 +187,7 @@ function applyAutoSelection(event: Extract<EvalEvent, { type: "run_started" }>):
   }
 
   if (pendingAutoSelect.type === "suite" && suite && suite === pendingAutoSelect.suite && suiteRunId) {
-    selectSuiteRun(suite, suiteRunId);
-    expandedSuites.update((s) => {
-      s.add(suite);
-      return s;
-    });
+    selectSuiteRun(suite, suiteRunId, event.workerModel);
     expandedRuns.update((s) => {
       s.add(suiteRunId);
       return s;
@@ -221,11 +216,7 @@ function resolvePendingSelectionFromRuns(currentRuns: RunIndexEntry[]): void {
   if (pendingLaunch.type === "suite" && candidate.suite && candidate.suiteRunId) {
     const suite = candidate.suite;
     const suiteRunId = candidate.suiteRunId;
-    selectSuiteRun(suite, suiteRunId);
-    expandedSuites.update((s) => {
-      s.add(suite);
-      return s;
-    });
+    selectSuiteRun(suite, suiteRunId, candidate.workerModel);
     expandedRuns.update((s) => {
       s.add(suiteRunId);
       return s;

@@ -34,7 +34,9 @@
 			<button
 				type="button"
 				role="tab"
+				id="sidebar-tab-{tab.id}"
 				aria-selected={$sidebarView === tab.id}
+				aria-controls="sidebar-panel-{tab.id}"
 				class="relative flex-1 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
 				class:text-foreground={$sidebarView === tab.id}
 				class:text-foreground-muted={$sidebarView !== tab.id}
@@ -49,7 +51,7 @@
 		{/each}
 	</div>
 
-	<div class="flex-1 overflow-y-auto">
+	<div class="flex-1 overflow-y-auto" role="tabpanel" id="sidebar-panel-{$sidebarView}" aria-labelledby="sidebar-tab-{$sidebarView}">
 		{#if $sidebarView === "bench"}
 			{@const caption = benchTab.caption}
 			<div class="border-b border-border-muted px-4 py-2 text-[10.5px] text-foreground-subtle">
@@ -189,6 +191,8 @@
 									<span class="ml-auto min-w-[4.5rem] text-right text-foreground-subtle tabular-nums">
 										{sr.finishedRuns}/{sr.totalRuns}{sr.epochs > 1 ? ` ×${sr.epochs}` : ""}
 									</span>
+									<!-- Reserved delta slot keeps score badges aligned with parent rows
+									     even though suite-runs don't carry a per-run drift number. -->
 									<span class="min-w-[2.5rem] text-right" aria-hidden="true"></span>
 									<span class="inline-block min-w-[2rem] text-center font-bold rounded px-1 py-0.5" style={sr.averageOverall != null ? `background-color: ${scoreColor(sr.averageOverall)}; color: var(--color-background)` : ""}>
 										{sr.averageOverall != null ? sr.averageOverall : ""}
@@ -213,6 +217,8 @@
 											{:else if run.status !== "completed"}
 												<span class="text-accent-red text-[10.5px]">{run.status}</span>
 											{/if}
+											<!-- Empty meta + delta slots reserve the same column widths as
+											     other row types so score badges line up vertically. -->
 											<span class="ml-auto min-w-[4.5rem] text-right" aria-hidden="true"></span>
 											<span class="min-w-[2.5rem] text-right" aria-hidden="true"></span>
 											<span class="inline-block min-w-[2rem] text-center font-bold rounded px-1 py-0.5" style={run.status !== "running" && run.overall != null ? `background-color: ${scoreColor(run.overall)}; color: var(--color-background)` : ""}>
