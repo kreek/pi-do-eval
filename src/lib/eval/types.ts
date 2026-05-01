@@ -444,6 +444,8 @@ export interface LauncherSuiteDef {
   source: SuiteSource;
 }
 
+export type LaunchType = "suite" | "trial" | "bench";
+
 export interface LauncherConfig {
   trials: LauncherTrial[];
   suites: Record<string, Array<{ trial: string; variant: string }>>;
@@ -455,6 +457,11 @@ export interface LauncherConfig {
   epochs?: number;
   budgets?: BudgetConfig;
   regressionThreshold?: number;
+  // Which launcher tab the project lands on (suite | trial | bench).
+  // Lets project authors signal the workflow that matters most for their eval
+  // — e.g. a comparison-driven project sets "bench" so users see the
+  // baseline-vs-treatment delta first.
+  defaultLaunchType?: LaunchType;
 }
 
 export type RunRequest =

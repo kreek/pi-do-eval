@@ -84,4 +84,28 @@ describe("loadLauncherConfigFromEvalDir", () => {
       /suite "quick" references unknown variant "missing" for trial "example"/,
     );
   });
+
+  it("propagates the project's defaultLaunchType so the launcher card can preselect the right tab", async () => {
+    const evalDir = makeEvalDir();
+    fs.writeFileSync(
+      path.join(evalDir, "eval.config.ts"),
+      "export default { suites: { quick: [{ trial: 'example', variant: 'default' }] }, defaultLaunchType: 'bench' };\n",
+    );
+
+    const config = await loadLauncherConfigFromEvalDir(evalDir);
+
+    expect(config?.defaultLaunchType).toBe("bench");
+  });
+
+  it("omits defaultLaunchType when the project does not specify one", async () => {
+    const evalDir = makeEvalDir();
+    fs.writeFileSync(
+      path.join(evalDir, "eval.config.ts"),
+      "export default { suites: { quick: [{ trial: 'example', variant: 'default' }] } };\n",
+    );
+
+    const config = await loadLauncherConfigFromEvalDir(evalDir);
+
+    expect(config?.defaultLaunchType).toBeUndefined();
+  });
 });

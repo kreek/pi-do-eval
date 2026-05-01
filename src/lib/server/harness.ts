@@ -27,6 +27,7 @@ interface EvalConfigModule {
     epochs?: number;
     budgets?: Record<string, number | undefined>;
     regressions?: { threshold?: number };
+    defaultLaunchType?: "suite" | "trial" | "bench";
   };
 }
 
@@ -93,6 +94,7 @@ export async function loadLauncherConfigFromEvalDir(evalDir: string): Promise<La
     epochs: evalConfig?.epochs,
     budgets: evalConfig?.budgets,
     regressionThreshold: evalConfig?.regressions?.threshold,
+    ...(evalConfig?.defaultLaunchType ? { defaultLaunchType: evalConfig.defaultLaunchType } : {}),
   };
 }
 

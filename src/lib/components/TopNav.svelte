@@ -21,8 +21,9 @@
 </script>
 
 <header class="flex items-center gap-6 border-b border-border-default bg-background-subtle px-5 py-2">
-	<a href="/" class="text-[14.5px] font-bold tracking-wide text-foreground">
-		Pi, do Eval
+	<a href="/" class="flex items-center gap-1.5 text-[14.5px] font-bold tracking-wide text-foreground">
+		<span>Pi, do Eval</span>
+		<span aria-hidden="true" class="text-[20px] leading-none">😈😇</span>
 	</a>
 	{#if projectId}
 		<nav class="flex items-center gap-1">

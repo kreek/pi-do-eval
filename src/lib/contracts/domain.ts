@@ -584,6 +584,14 @@ export const launcherConfigCodec: JsonCodec<LauncherConfig> = {
         : Array.isArray(object.value.suiteDefs)
           ? parseArray(object.value.suiteDefs, "launcherConfig.suiteDefs", parseLauncherSuiteDef)
           : fail("launcherConfig.suiteDefs must be an array");
+    const defaultLaunchType =
+      object.value.defaultLaunchType === undefined
+        ? ok(undefined)
+        : object.value.defaultLaunchType === "suite" ||
+            object.value.defaultLaunchType === "trial" ||
+            object.value.defaultLaunchType === "bench"
+          ? ok(object.value.defaultLaunchType as "suite" | "trial" | "bench")
+          : fail('launcherConfig.defaultLaunchType must be "suite", "trial", or "bench"');
     const issues = mergeIssues(
       ...trials,
       suitesObject,
@@ -595,6 +603,7 @@ export const launcherConfigCodec: JsonCodec<LauncherConfig> = {
       budgets,
       regressionThreshold,
       suiteDefs,
+      defaultLaunchType,
     );
     if (issues.length > 0) return failIssues(issues);
     const suites: Record<string, Array<{ trial: string; variant: string }>> = {};
@@ -614,6 +623,7 @@ export const launcherConfigCodec: JsonCodec<LauncherConfig> = {
       ...(epochs.value !== undefined ? { epochs: epochs.value } : {}),
       ...(budgets.value ? { budgets: budgets.value } : {}),
       ...(regressionThreshold.value !== undefined ? { regressionThreshold: regressionThreshold.value } : {}),
+      ...(defaultLaunchType.value ? { defaultLaunchType: defaultLaunchType.value } : {}),
     });
   },
   serialize(value) {

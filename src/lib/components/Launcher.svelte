@@ -15,11 +15,10 @@
 	let hasActiveRun = $derived($runs.some((run) => run.status === "running"));
 	let isRunning = $derived(hasActiveRun || $pendingLaunch != null);
 	let runType = $state<"suite" | "trial" | "bench">("suite");
+	let runTypeInitializedForProject = $state<string | null>(null);
 	let selectedTrial = $state("");
 	let selectedVariant = $state("");
 	let selectedSuite = $state("");
-	let selectedModel = $state("");
-	let noJudge = $state(false);
 	let running = $state(false);
 	let error = $state<string | null>(null);
 	let statusPoll = $state<ReturnType<typeof setInterval> | null>(null);
@@ -29,6 +28,10 @@
 		config?.trials.find((t) => t.name === selectedTrial)?.variants ?? [],
 	);
 
+	// Worker model and judge are sourced from eval.config.ts; the launcher does
+	// not expose model overrides or a "skip judge" toggle. The value of running
+	// inside pi-do-eval (vs a script) is the LLM judge — disabling it would
+	// turn the run into a deterministic-only pipeline that belongs at the CLI.
 	function formatModel(m: { provider?: string; model?: string }): string {
 		if (m.provider && m.model) return `${m.provider}/${m.model}`;
 		return m.model ?? m.provider ?? "default";
@@ -37,18 +40,6 @@
 	let defaultWorkerLabel = $derived(
 		config?.defaultWorker?.model ? formatModel(config.defaultWorker) : "agent default",
 	);
-
-	// All unique model labels: default worker + configured models
-	let modelOptions = $derived.by(() => {
-		if (!config) return [];
-		const options: string[] = [];
-		// The bench models are available as overrides for suite/trial too
-		for (const m of config.models) {
-			const label = formatModel(m);
-			if (!options.includes(label)) options.push(label);
-		}
-		return options;
-	});
 
 	let canRun = $derived(() => {
 		if (running) return false;
@@ -68,9 +59,19 @@
 		selectedTrial = "";
 		selectedVariant = "";
 		selectedSuite = "";
-		selectedModel = "";
-		noJudge = false;
+		runTypeInitializedForProject = null;
 		clearPendingLaunch();
+	});
+
+	// Apply the project's preferred launch tab the first time its config loads.
+	// Tracking by project ID lets the user freely switch tabs after the initial
+	// preselect without our reapplying the default on every config refresh.
+	$effect(() => {
+		const projectId = $activeProjectId;
+		if (!config || !projectId) return;
+		if (runTypeInitializedForProject === projectId) return;
+		runType = config.defaultLaunchType ?? "suite";
+		runTypeInitializedForProject = projectId;
 	});
 
 	$effect(() => {
@@ -119,14 +120,10 @@
 						type: "trial",
 						trial: selectedTrial,
 						variant: selectedVariant,
-						...(selectedModel ? { model: selectedModel } : {}),
-						...(noJudge ? { noJudge: true } : {}),
 					}
 				: {
 						type: runType,
 						suite: selectedSuite,
-						...(selectedModel ? { model: selectedModel } : {}),
-						...(noJudge ? { noJudge: true } : {}),
 					};
 
 		try {
@@ -146,7 +143,7 @@
 						suite: runType === "suite" ? selectedSuite : undefined,
 						trial: runType === "trial" ? selectedTrial : undefined,
 						variant: runType === "trial" ? selectedVariant : undefined,
-						modelLabel: selectedModel || defaultWorkerLabel,
+						modelLabel: defaultWorkerLabel,
 						startedAt: new Date().toISOString(),
 					});
 				}
@@ -267,32 +264,6 @@
 			</select>
 		{/if}
 
-		{#if runType !== "bench"}
-			<select
-				class="max-w-[180px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[12px] text-foreground"
-				bind:value={selectedModel}
-				aria-label="Model"
-				title={selectedModel || defaultWorkerLabel}
-			>
-				<option value="">{defaultWorkerLabel}</option>
-				{#each modelOptions as model (model)}
-					<option value={model}>{model}</option>
-				{/each}
-			</select>
-		{:else}
-			<span
-				class="max-w-[180px] truncate rounded border border-border-default bg-background-muted px-2 py-1 text-[11px] text-foreground-muted"
-				title={modelOptions.join(", ")}
-			>
-				{modelOptions.length > 0 ? modelOptions.join(", ") : "Models from config"}
-			</span>
-		{/if}
-
-		<label class="flex items-center gap-1 text-[11px] text-foreground-muted" title="Skip the LLM judge step">
-			<input type="checkbox" bind:checked={noJudge} class="accent-accent-blue" />
-			<span class="hidden md:inline">No judge</span>
-		</label>
-
 		<button
 			type="button"
 			class="run-btn ml-1 flex items-center gap-1.5 rounded px-4 py-1.5 text-[12px] font-bold uppercase tracking-wider transition-all disabled:opacity-40"
@@ -326,25 +297,24 @@
 	}
 
 	.run-btn.active {
-		box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.5),
-			0 0 16px rgba(86, 194, 113, 0.35);
+		/* Solid 1px edge anchors the shape so the surrounding glow doesn't read
+		   as a fuzzy halo without a button inside it. */
+		border: 1px solid rgb(86, 194, 113);
+		box-shadow: 0 0 16px rgba(86, 194, 113, 0.35);
 		animation: run-btn-breathe 2.8s ease-in-out infinite;
 	}
 	.run-btn.active:hover {
 		transform: translateY(-1px);
-		box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.6),
-			0 0 24px rgba(86, 194, 113, 0.55);
+		box-shadow: 0 0 24px rgba(86, 194, 113, 0.55);
 		filter: brightness(1.1);
 	}
 
 	@keyframes run-btn-breathe {
 		0%, 100% {
-			box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.5),
-				0 0 14px rgba(86, 194, 113, 0.3);
+			box-shadow: 0 0 14px rgba(86, 194, 113, 0.3);
 		}
 		50% {
-			box-shadow: 0 0 0 1px rgba(86, 194, 113, 0.65),
-				0 0 22px rgba(86, 194, 113, 0.55);
+			box-shadow: 0 0 22px rgba(86, 194, 113, 0.55);
 		}
 	}
 </style>
