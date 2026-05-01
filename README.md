@@ -1,26 +1,39 @@
 # Pi, do Eval 😈😇
 
-Use Pi to eval Pi (extensions). "Pi, do Eval" is a framework for building your own Pi-based evaluation harnesses. Use it to analyze agent behavior over a consistent set of trials, iterate on that behavior, and catch regressions as you improve an extension.
+A framework for building evaluation harnesses for coding agents. Use it to
+measure agent behavior over a consistent set of trials, compare configurations,
+and catch regressions over time.
 
 A harness built with `pi-do-eval` can:
 
-- run Pi with the extension under test
-- parse the JSONL session into tool calls, file writes, and plugin events
+- run a coding agent (Pi or Codex out of the box; additional agents via
+  `registerHarness`) against the extension or plugin under test
+- parse the agent's JSONL session into tool calls, file writes, and
+  domain-specific events
 - run deterministic verification
-- run a second Pi session as an LLM judge
-- score and report the result
+- score with an optional LLM judge
+- compare profiles side-by-side as benchmarks, or track a single profile over
+  time as a regression timeline
 
-It ships a small scaffold command, `pi-do-eval init`, which generates a working harness you can customize.
+It ships a small scaffold command, `pi-do-eval init`, which generates a
+working harness you can customize.
 
 ## How it works
 
-1. Your harness spawns `pi -p --mode json -e <extensionPath>` with the extension under test.
-2. `pi-do-eval` parses the JSONL session into tool calls, file writes, and optional plugin-specific events.
-3. Your plugin can run independent verification after the worker session completes.
-4. Your harness can spawn `pi -p --mode json --no-extensions` as a judge.
-5. Deterministic plugin scores and optional judge scores are combined into a final report built for agent improvement and non-regression tracking.
+1. The harness picks an **agent adapter** (`pi` or `codex` — see
+   `src/lib/eval/harnesses/`) and invokes the matching CLI against the
+   extension or plugin under test.
+2. `pi-do-eval` parses the JSONL session into tool calls, file writes, and
+   optional plugin-specific events.
+3. Your plugin runs independent verification after the worker session
+   completes.
+4. The harness can spawn a separate judge process (Pi by default) to add
+   qualitative scores.
+5. Deterministic plugin scores and optional judge scores are combined into a
+   final report for agent improvement and non-regression tracking.
 
-Note: The eval prompt is deliberately minimal; the extension's own system prompt should drive the behavior.
+Note: the eval prompt is deliberately minimal; the agent's own system prompt
+or installed plugin should drive the behavior.
 
 ## Getting Started
 
@@ -145,6 +158,39 @@ pi-do-eval ui-dev --project ~/sandbox/pi-tdd --port 4242
 ```
 
 That starts the SvelteKit/Vite dev server with HMR and selects the target project in the registry before launch.
+
+### Sidebar Views
+
+The viewer's left nav has two top-level tabs that answer different questions:
+
+- **Bench** — cross-profile comparisons (one suite, two or more profiles).
+  Each row is one comparison; the score badge is the treatment profile's
+  average and the delta is treatment-vs-baseline.
+- **Regression** — a single profile drifting against itself over time.
+  Groups are keyed by `(suite, profile)` so two profiles with different
+  layers don't share a timeline; the delta is latest-vs-prior for the same
+  profile.
+
+The launcher card mirrors the same vocabulary: `Bench` (multi-profile suite
+run), `Regression` (single-profile suite run, lands in the regression
+timeline), and `Trial` (debug a single trial).
+
+### Project defaults in `eval.config.ts`
+
+The eval config can declare which launcher tab a project should land on:
+
+```typescript
+const config: EvalConfig = {
+  // ...
+  defaultLaunchType: "bench", // "bench" | "trial" | "suite"
+};
+```
+
+`"suite"` shows as **Regression** in the launcher (the value stays "suite"
+on the wire because the underlying `RunRequest.type` is unchanged). Set this
+to whichever tab a new contributor should see first when they open your
+project — comparison-driven projects pick `bench`, drift-tracking projects
+pick `suite`.
 
 ## Plugin API
 
@@ -453,6 +499,42 @@ When omitted, Pi uses its defaults from `~/.pi/agent/settings.json`.
 For worker sessions, the parser extracts the actual model/provider from `message_start` events and stores them on `EvalSession.modelInfo`. The scaffolded harness uses that for worker report metadata.
 
 Judge metadata is different: `runJudge` currently returns scores, reasons, and findings, but not parsed model info. The scaffolded harness records the configured judge model string in report metadata.
+
+## Agent Adapters
+
+`pi-do-eval` ships two agent adapters under
+[`src/lib/eval/harnesses/`](src/lib/eval/harnesses/): `pi` and `codex`. Each
+profile in `eval.config.ts` picks one via `agent.harness` and configures it
+via a typed `agent` block. To add an adapter for another agent (e.g. Claude
+Code), implement the `AgentHarness` interface and call `registerHarness(...)`
+during your harness setup.
+
+For example, the Codex adapter accepts:
+
+```typescript
+agent: {
+  harness: "codex",
+  provider: "openai",
+  model: "gpt-5.4",
+  codex: {
+    isolateHome: true,             // fresh CODEX_HOME per run, auth.json copied
+    ignoreUserConfig: false,       // load $CODEX_HOME/config.toml so plugin
+                                   // marketplaces registered during prepare
+                                   // are visible at exec time
+    pluginMarketplaces: [
+      "/path/to/local/marketplace-root",
+      "owner/repo@ref",
+    ],
+    extraArgs: ["-c", 'plugins."abp@abp".enabled=true'],
+  },
+}
+```
+
+The harness's `prepare` step runs `codex plugin marketplace add` for each
+entry, so the test profile gets the same plugin-install flow a real user
+would experience after `codex plugin marketplace add`. See
+[`harnesses/codex.ts`](src/lib/eval/harnesses/codex.ts) for the full agent
+shape; the Pi and Claude adapters expose their own per-runtime options.
 
 ## Sandboxing
 
