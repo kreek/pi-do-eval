@@ -61,6 +61,36 @@ describe("parseJudgeResponse", () => {
   it("returns undefined when no score fields are present", () => {
     expect(parseJudgeResponse('{"metadata":{"nested":true},"findings":["x"]}')).toBeUndefined();
   });
+
+  it("aggregates findings across candidates when the scores-bearing object lacks them", () => {
+    // Some judges emit findings in an early explanatory JSON and scores in a
+    // later summary JSON. Aggregating across candidates avoids silently
+    // dropping the findings.
+    const input = [
+      '{"findings":["positive: clean error envelope","negative: missing tenant check"]}',
+      "...summary follows...",
+      '{"engineering_maturity":83,"proof_quality":74}',
+    ].join("\n");
+
+    expect(parseJudgeResponse(input)).toEqual({
+      scores: { engineering_maturity: 83, proof_quality: 74 },
+      reasons: {},
+      findings: ["positive: clean error envelope", "negative: missing tenant check"],
+    });
+  });
+
+  it("dedupes findings when the same string appears in multiple candidates", () => {
+    const input = [
+      '{"findings":["repeated note","unique-early"]}',
+      '{"engineering_maturity":80,"findings":["repeated note","unique-late"]}',
+    ].join("\n");
+
+    expect(parseJudgeResponse(input)).toEqual({
+      scores: { engineering_maturity: 80 },
+      reasons: {},
+      findings: ["repeated note", "unique-early", "unique-late"],
+    });
+  });
 });
 
 describe("finalizeJudgeOutcome", () => {
@@ -76,6 +106,7 @@ describe("finalizeJudgeOutcome", () => {
         reasons: { quality: "clear" },
         findings: ["ok"],
       },
+      stdout: output,
     });
   });
 

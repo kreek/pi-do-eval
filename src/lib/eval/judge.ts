@@ -65,6 +65,28 @@ export function findBalancedJsonObjects(output: string): string[] {
 export function parseJudgeResponse(output: string): JudgeResult | undefined {
   const candidates = findBalancedJsonObjects(output);
 
+  // First pass: aggregate `findings` strings from every parseable candidate.
+  // Some judges emit findings in an early explanatory JSON object and scores
+  // in a later summary object; without aggregation we would silently drop
+  // the findings whenever the scores-bearing object lacks its own array.
+  const aggregatedFindings: string[] = [];
+  const seenFindings = new Set<string>();
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!Array.isArray(parsed.findings)) continue;
+      for (const finding of parsed.findings) {
+        if (typeof finding !== "string") continue;
+        if (seenFindings.has(finding)) continue;
+        seenFindings.add(finding);
+        aggregatedFindings.push(finding);
+      }
+    } catch {
+      // Skip unparseable candidates.
+    }
+  }
+
+  // Second pass: return the most recent candidate with at least one score.
   for (let i = candidates.length - 1; i >= 0; i--) {
     const candidate = candidates[i];
     if (!candidate) continue;
@@ -86,9 +108,7 @@ export function parseJudgeResponse(output: string): JudgeResult | undefined {
       return {
         scores,
         reasons,
-        findings: Array.isArray(parsed.findings)
-          ? parsed.findings.filter((finding: unknown): finding is string => typeof finding === "string")
-          : [],
+        findings: aggregatedFindings,
       };
     } catch {
       // Try the next-most-recent candidate.
@@ -106,7 +126,8 @@ export function finalizeJudgeOutcome(stdout: string): JudgeOutcome {
 
   const result = parseJudgeResponse(assistantText);
   if (result) {
-    return { ok: true, result };
+    // Keep raw stdout on success too so callers can persist it for diagnosis.
+    return { ok: true, result, stdout };
   }
 
   return { ok: false, reason: "parse_error", ...(stdout ? { stdout } : {}) };
